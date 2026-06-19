@@ -113,7 +113,11 @@ const tsLiteral = (v) => JSON.stringify(v);
       score: entry.judgeScore ?? r.score ?? 0,
       color: PALETTE[i % PALETTE.length],
       coords,
-      stops: r.stops,
+      // Project to the ScenicStop shape (drop pipeline-only flags like streetView).
+      stops: r.stops.map((s) => ({
+        lat: s.lat, lon: s.lon, title: s.title, blurb: s.blurb,
+        kind: s.kind, heading: s.heading, ...(s.source ? { source: s.source } : {}),
+      })),
     });
     console.log(`  [${r.id}] ${out[out.length - 1].distanceKm}km, ${coords.length} pts, curve ${r.rubric.curvature}, score ${out[out.length - 1].score}${detour ? ' [waypoint-fallback]' : ''}`);
     i++;
