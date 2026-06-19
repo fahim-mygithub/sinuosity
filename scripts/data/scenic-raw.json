@@ -1,0 +1,4423 @@
+{
+  "generatedAt": "build",
+  "bbox": "42.05,-79.20,43.40,-77.75",
+  "counts": {
+    "viewpoint": 55,
+    "waterfall": 27,
+    "peak": 161,
+    "attraction": 100,
+    "reserve": 137,
+    "water": 80
+  },
+  "osrm": {
+    "ok": true,
+    "code": "Ok",
+    "points": 693,
+    "km": 63.4
+  },
+  "pois": {
+    "viewpoint": [
+      {
+        "kind": "viewpoint",
+        "name": "Skylon Tower",
+        "lat": 43.08514,
+        "lon": -79.07969,
+        "wikipedia": "en:Skylon Tower",
+        "wikidata": "Q1208032",
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Gardeau Overlook",
+        "lat": 42.64015,
+        "lon": -77.98318,
+        "ele": 271,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Terrapin Point",
+        "lat": 43.08008,
+        "lon": -79.07443,
+        "wikipedia": "en:Terrapin Point",
+        "wikidata": "Q14875443",
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Inspiration Point",
+        "lat": 42.58811,
+        "lon": -78.03463,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Duck blind",
+        "lat": 43.0579,
+        "lon": -78.98586,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Duck blind",
+        "lat": 43.05797,
+        "lon": -78.98643,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Big Bridge",
+        "lat": 43.16929,
+        "lon": -78.69501,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Bridge overlook",
+        "lat": 42.90556,
+        "lon": -78.9016,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "South Viewing Blind",
+        "lat": 42.84499,
+        "lon": -78.85086,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "North Viewing Blind",
+        "lat": 42.85174,
+        "lon": -78.85537,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Deer blind",
+        "lat": 42.8855,
+        "lon": -78.72799,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Harbor overlook",
+        "lat": 43.33753,
+        "lon": -78.71632,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Duck Blind",
+        "lat": 42.8722,
+        "lon": -78.88375,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "lookout of falls",
+        "lat": 43.07763,
+        "lon": -79.08197,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Top of Mound",
+        "lat": 42.83475,
+        "lon": -78.84901,
+        "ele": 152,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Shakespeare Hill",
+        "lat": 42.93169,
+        "lon": -78.87205,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Incline Railway",
+        "lat": 43.07952,
+        "lon": -79.08079,
+        "wikipedia": "en:Falls Incline Railway",
+        "wikidata": "Q5432479",
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Geologic Past overlook",
+        "lat": 43.09761,
+        "lon": -79.06081,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Industrial Heritage overlook",
+        "lat": 43.09594,
+        "lon": -79.06115,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Table Rock Welcome Centre",
+        "lat": 43.07896,
+        "lon": -79.07816,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Waterfowl Blind 28",
+        "lat": 42.96504,
+        "lon": -78.94,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Waterfowl Blind 28",
+        "lat": 42.96368,
+        "lon": -78.93965,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Mt. Morris Dam Overlook",
+        "lat": 42.73503,
+        "lon": -77.90749,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Archery Field Overlook",
+        "lat": 42.59929,
+        "lon": -78.02953,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Akron Falls",
+        "lat": 43.0152,
+        "lon": -78.48387,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Thirty Mile Point Light",
+        "lat": 43.37491,
+        "lon": -78.48608,
+        "wikidata": "Q7785223",
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "East Overlook",
+        "lat": 43.05794,
+        "lon": -78.98614,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Cliff top",
+        "lat": 42.69242,
+        "lon": -79.04078,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Eagle Overlook",
+        "lat": 43.05297,
+        "lon": -78.99769,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Buffalo City Hall Observation Deck",
+        "lat": 42.88662,
+        "lon": -78.87931,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Williams Overlook",
+        "lat": 42.5947,
+        "lon": -78.02019,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Pendleton Guard Gate",
+        "lat": 43.11607,
+        "lon": -78.73585,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Wetland Bird Blind",
+        "lat": 42.96144,
+        "lon": -78.96063,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Observation Mound",
+        "lat": 42.84451,
+        "lon": -78.84849,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Easy view of lower falls",
+        "lat": 42.58647,
+        "lon": -78.02094,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Higher view of middle falls",
+        "lat": 42.58412,
+        "lon": -78.04277,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Great Bend Overlook",
+        "lat": 42.60731,
+        "lon": -78.02395,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Tea Table",
+        "lat": 42.61266,
+        "lon": -78.0087,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Hogsback Overlook",
+        "lat": 42.72144,
+        "lon": -77.92734,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Photo blind",
+        "lat": 42.67586,
+        "lon": -78.38093,
+        "tourism": "viewpoint",
+        "leisure": "bird_hide"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Hawk Watch",
+        "lat": 42.67802,
+        "lon": -78.38012,
+        "tourism": "viewpoint",
+        "leisure": "bird_hide"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Cayuga Overlook",
+        "lat": 43.11851,
+        "lon": -78.44241,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Snake Hill Overlook",
+        "lat": 42.61119,
+        "lon": -78.01723,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Squawkie Hill",
+        "lat": 42.73872,
+        "lon": -77.89692,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Niagara Power Vista",
+        "lat": 43.13977,
+        "lon": -79.04025,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Poet's Seat",
+        "lat": 42.67522,
+        "lon": -78.3829,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Niagara River Overlook",
+        "lat": 42.95582,
+        "lon": -78.91129,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Humphrey's Overlook",
+        "lat": 42.60484,
+        "lon": -78.03111,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Bear Point",
+        "lat": 42.4182,
+        "lon": -78.88598,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Sydney's Dock",
+        "lat": 43.05566,
+        "lon": -79.13623,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Turtle Pond",
+        "lat": 43.05496,
+        "lon": -79.13428,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Top of the World",
+        "lat": 42.84873,
+        "lon": -78.1479,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "The Outlook",
+        "lat": 42.67353,
+        "lon": -78.38254,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Pipeline Confluence",
+        "lat": 42.70626,
+        "lon": -78.75488,
+        "tourism": "viewpoint"
+      },
+      {
+        "kind": "viewpoint",
+        "name": "Chestnut Lawn Overlook",
+        "lat": 42.59453,
+        "lon": -78.02314,
+        "tourism": "viewpoint"
+      }
+    ],
+    "waterfall": [
+      {
+        "kind": "waterfall",
+        "name": "Lower Falls",
+        "lat": 42.58563,
+        "lon": -78.02029,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Middle Falls",
+        "lat": 42.5831,
+        "lon": -78.04258,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "American Falls",
+        "lat": 43.08474,
+        "lon": -79.06943,
+        "wikipedia": "en:American Falls",
+        "wikidata": "Q1320475",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Horseshoe Falls",
+        "lat": 43.07725,
+        "lon": -79.07506,
+        "wikipedia": "en:Horseshoe Falls",
+        "wikidata": "Q1373778",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Mattulke Falls",
+        "lat": 42.71333,
+        "lon": -78.87122,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Cromer's Mill",
+        "lat": 42.64114,
+        "lon": -78.85278,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Medina Falls",
+        "lat": 43.2225,
+        "lon": -78.38287,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Upper Falls",
+        "lat": 42.57807,
+        "lon": -78.04914,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Buttermilk Falls",
+        "lat": 43.00477,
+        "lon": -77.97345,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Bridal Veil Falls",
+        "lat": 43.08348,
+        "lon": -79.07076,
+        "wikipedia": "en:Bridal Veil Falls (Niagara Falls)",
+        "wikidata": "Q511247",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Eternal Flame Falls",
+        "lat": 42.70185,
+        "lon": -78.75176,
+        "wikipedia": "en:Eternal Flame Falls",
+        "wikidata": "Q5402647",
+        "tourism": "attraction",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Warsaw Waterfall",
+        "lat": 42.73252,
+        "lon": -78.15237,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Glen Falls",
+        "lat": 42.96394,
+        "lon": -78.74391,
+        "wikipedia": "en:Glen Falls (New York)",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Bridal falls",
+        "lat": 42.08138,
+        "lon": -78.75057,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Indian Falls",
+        "lat": 43.18342,
+        "lon": -78.71369,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Triphammer Falls",
+        "lat": 42.8603,
+        "lon": -77.76377,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Royalton Falls",
+        "lat": 43.18153,
+        "lon": -78.58625,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Akron Falls",
+        "lat": 43.01529,
+        "lon": -78.48368,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Indian Falls",
+        "lat": 43.02644,
+        "lon": -78.39978,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Keshequa Creek Falls",
+        "lat": 42.6622,
+        "lon": -77.84857,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Upper Akron Falls",
+        "lat": 43.01455,
+        "lon": -78.4828,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Ensminger Falls",
+        "lat": 42.41692,
+        "lon": -78.8832,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Fall Brook Falls",
+        "lat": 42.77448,
+        "lon": -77.82863,
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Horseshoe Falls",
+        "lat": 43.0784,
+        "lon": -79.07578,
+        "wikipedia": "en:Horseshoe Falls",
+        "wikidata": "Q1373778",
+        "tourism": "attraction",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Bridal Veil Falls",
+        "lat": 43.08358,
+        "lon": -79.07084,
+        "wikipedia": "en:Bridal Veil Falls (Niagara Falls)",
+        "wikidata": "Q511247",
+        "tourism": "attraction",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "American Falls",
+        "lat": 43.08484,
+        "lon": -79.07003,
+        "wikipedia": "en:American Falls",
+        "wikidata": "Q1320475",
+        "tourism": "attraction",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "waterfall",
+        "name": "Bridal Veil Falls",
+        "lat": 43.08358,
+        "lon": -79.07084,
+        "wikipedia": "en:Bridal Veil Falls (Niagara Falls)",
+        "wikidata": "Q511247",
+        "tourism": "attraction",
+        "waterway": "waterfall"
+      }
+    ],
+    "peak": [
+      {
+        "kind": "peak",
+        "name": "Aldrich Hill",
+        "lat": 42.34913,
+        "lon": -79.11073,
+        "ele": 489,
+        "wikidata": "Q34802089",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Arab Hill",
+        "lat": 42.3045,
+        "lon": -79.17921,
+        "ele": 640,
+        "wikidata": "Q34802236",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Armstrong Hill",
+        "lat": 42.37423,
+        "lon": -78.7367,
+        "ele": 591,
+        "wikidata": "Q34802273",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bailey Hill",
+        "lat": 42.36117,
+        "lon": -78.71309,
+        "ele": 612,
+        "wikidata": "Q34802463",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bald Mountain",
+        "lat": 42.31494,
+        "lon": -77.98792,
+        "ele": 641,
+        "wikidata": "Q34803389",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bartlett Hill",
+        "lat": 42.27645,
+        "lon": -78.65808,
+        "ele": 624,
+        "wikidata": "Q34804426",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Beebe Hill",
+        "lat": 42.2009,
+        "lon": -78.2364,
+        "ele": 685,
+        "wikidata": "Q34804822",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Ben Socker Hill",
+        "lat": 42.22313,
+        "lon": -77.77666,
+        "ele": 705,
+        "wikidata": "Q34804997",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bixby Hill",
+        "lat": 42.50256,
+        "lon": -78.43363,
+        "ele": 582,
+        "wikidata": "Q34805445",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Blanchard Hill",
+        "lat": 42.63867,
+        "lon": -78.66336,
+        "ele": 481,
+        "wikidata": "Q34805611",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bliven Hill",
+        "lat": 42.20479,
+        "lon": -77.95611,
+        "ele": 702,
+        "wikidata": "Q34805656",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Blue Hill",
+        "lat": 43.04589,
+        "lon": -77.91584,
+        "ele": 220,
+        "wikidata": "Q34805733",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Boutwell Hill",
+        "lat": 42.31256,
+        "lon": -79.17254,
+        "ele": 635,
+        "wikidata": "Q34805973",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Boyce Hill",
+        "lat": 42.34145,
+        "lon": -78.51669,
+        "ele": 645,
+        "wikidata": "Q34806029",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bozard Hill",
+        "lat": 42.23645,
+        "lon": -78.4528,
+        "ele": 671,
+        "wikidata": "Q34806050",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Braley Hill",
+        "lat": 42.07284,
+        "lon": -78.94337,
+        "ele": 653,
+        "wikidata": "Q34806100",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bread Loaf Hill",
+        "lat": 42.46951,
+        "lon": -78.59197,
+        "ele": 593,
+        "wikidata": "Q34806139",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bryant Hill",
+        "lat": 42.30729,
+        "lon": -78.57141,
+        "ele": 684,
+        "wikidata": "Q34806431",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bucktooth Hill",
+        "lat": 42.1959,
+        "lon": -78.76781,
+        "ele": 658,
+        "wikidata": "Q34806743",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Burks Hill",
+        "lat": 42.87673,
+        "lon": -78.08779,
+        "ele": 430,
+        "wikidata": "Q34806995",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Burleigh Hill",
+        "lat": 42.88951,
+        "lon": -78.03973,
+        "ele": 343,
+        "wikidata": "Q34807003",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Burns Hill",
+        "lat": 42.42229,
+        "lon": -78.59586,
+        "ele": 604,
+        "wikidata": "Q34807019",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Burt Hill",
+        "lat": 42.23368,
+        "lon": -78.33057,
+        "ele": 647,
+        "wikidata": "Q34807217",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Bush Hill",
+        "lat": 42.38812,
+        "lon": -78.34168,
+        "ele": 671,
+        "wikidata": "Q34807264",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Camel Back",
+        "lat": 42.0684,
+        "lon": -78.44502,
+        "ele": 525,
+        "wikidata": "Q34807415",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Casswell Hill",
+        "lat": 43.05367,
+        "lon": -78.07307,
+        "ele": 223,
+        "wikidata": "Q34807826",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Chapell Hill",
+        "lat": 42.18423,
+        "lon": -78.52058,
+        "ele": 708,
+        "wikidata": "Q34808465",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Chestnut Knoll",
+        "lat": 42.87052,
+        "lon": -78.21228,
+        "ele": 414,
+        "wikidata": "Q34808651",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Cobble Hill",
+        "lat": 42.772,
+        "lon": -78.28724,
+        "ele": 515,
+        "wikidata": "Q34809016",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Cobble Knob",
+        "lat": 42.46951,
+        "lon": -78.74836,
+        "ele": 335,
+        "wikidata": "Q34809023",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Collings Hill",
+        "lat": 42.98367,
+        "lon": -77.78723,
+        "ele": 233,
+        "wikidata": "Q34809254",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Colton Hill",
+        "lat": 42.84423,
+        "lon": -78.19279,
+        "ele": 510,
+        "wikidata": "Q34809307",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Cooper Hill",
+        "lat": 42.22229,
+        "lon": -78.50141,
+        "ele": 678,
+        "wikidata": "Q34809540",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Crosby Hill",
+        "lat": 42.30423,
+        "lon": -78.53475,
+        "ele": 666,
+        "wikidata": "Q34809885",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Crow Hill",
+        "lat": 42.66825,
+        "lon": -78.4827,
+        "ele": 500,
+        "wikidata": "Q34809957",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Crumb Hill",
+        "lat": 42.3609,
+        "lon": -78.7192,
+        "ele": 622,
+        "wikidata": "Q34810022",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Cuba Hill",
+        "lat": 42.21078,
+        "lon": -78.25841,
+        "ele": 617,
+        "wikidata": "Q34810103",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Davis Hill",
+        "lat": 42.97145,
+        "lon": -77.77139,
+        "ele": 214,
+        "wikidata": "Q34810202",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Dewey Hill",
+        "lat": 42.77915,
+        "lon": -77.82964,
+        "ele": 206,
+        "wikidata": "Q49024634",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Doyle Hill",
+        "lat": 42.82117,
+        "lon": -78.18946,
+        "ele": 483,
+        "wikidata": "Q34821502",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Dutch Hill",
+        "lat": 42.19784,
+        "lon": -78.42446,
+        "ele": 633,
+        "wikidata": "Q34913457",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Dutch Hill",
+        "lat": 42.44784,
+        "lon": -78.6753,
+        "ele": 548,
+        "wikidata": "Q34913469",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Dutton Hill",
+        "lat": 42.85812,
+        "lon": -78.13751,
+        "ele": 415,
+        "wikidata": "Q34913700",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "East Boston Hill",
+        "lat": 42.66034,
+        "lon": -78.71642,
+        "ele": 486,
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "East Hill",
+        "lat": 42.28951,
+        "lon": -78.42085,
+        "ele": 655,
+        "wikidata": "Q34914383",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "East Hill",
+        "lat": 42.50368,
+        "lon": -77.86389,
+        "ele": 623,
+        "wikidata": "Q34914370",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "East Hill",
+        "lat": 42.6545,
+        "lon": -78.70725,
+        "ele": 509,
+        "wikidata": "Q34914409",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "East Hill",
+        "lat": 42.98923,
+        "lon": -78.56169,
+        "ele": 239,
+        "wikidata": "Q34914422",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Finnegan Hill",
+        "lat": 42.94673,
+        "lon": -77.78278,
+        "ele": 212,
+        "wikidata": "Q34868568",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Fish Hill",
+        "lat": 42.27506,
+        "lon": -78.72225,
+        "ele": 697,
+        "wikidata": "Q34868670",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Forsythe Hill",
+        "lat": 43.08534,
+        "lon": -78.03418,
+        "ele": 214,
+        "wikidata": "Q34822318",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Fox Hill",
+        "lat": 42.81089,
+        "lon": -78.14307,
+        "ele": 511,
+        "wikidata": "Q34822676",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Frog Hill",
+        "lat": 42.53812,
+        "lon": -77.8325,
+        "ele": 611,
+        "wikidata": "Q34915166",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Grunder Hill",
+        "lat": 42.46201,
+        "lon": -77.92722,
+        "ele": 623,
+        "wikidata": "Q34870585",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Hamilton Hill",
+        "lat": 42.25813,
+        "lon": -77.75777,
+        "ele": 538,
+        "wikidata": "Q34823106",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Hammond Hill",
+        "lat": 42.44395,
+        "lon": -78.74253,
+        "ele": 510,
+        "wikidata": "Q34823176",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Hanover Hill",
+        "lat": 42.11201,
+        "lon": -77.91361,
+        "ele": 661,
+        "wikidata": "Q34823230",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Harris Hill",
+        "lat": 42.17145,
+        "lon": -79.19338,
+        "ele": 509,
+        "wikidata": "Q34823351",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Harris Hill",
+        "lat": 43.08534,
+        "lon": -78.02001,
+        "ele": 209,
+        "wikidata": "Q34823386",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Hoxie Hill",
+        "lat": 42.20006,
+        "lon": -78.92282,
+        "ele": 572,
+        "wikidata": "Q34824361",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Hurst Hill",
+        "lat": 42.86562,
+        "lon": -78.07362,
+        "ele": 412,
+        "wikidata": "Q34824683",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Irish Hill",
+        "lat": 42.33673,
+        "lon": -78.63808,
+        "ele": 683,
+        "wikidata": "Q34824930",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Mount Irvine",
+        "lat": 42.06284,
+        "lon": -78.66753,
+        "ele": 708,
+        "wikidata": "Q34881855",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Isaman Hill",
+        "lat": 42.46396,
+        "lon": -77.86444,
+        "ele": 606,
+        "wikidata": "Q34825088",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jackman Hill",
+        "lat": 42.3434,
+        "lon": -78.67447,
+        "ele": 664,
+        "wikidata": "Q34875713",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jackson Hill",
+        "lat": 42.2434,
+        "lon": -78.21668,
+        "ele": 679,
+        "wikidata": "Q34875747",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jacobs Hill",
+        "lat": 42.33062,
+        "lon": -78.05445,
+        "ele": 598,
+        "wikidata": "Q34875856",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jenkins Hill",
+        "lat": 42.79089,
+        "lon": -78.13668,
+        "ele": 502,
+        "wikidata": "Q34876312",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jericho Hill",
+        "lat": 42.23201,
+        "lon": -77.81166,
+        "ele": 717,
+        "wikidata": "Q34876405",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jersey Hill",
+        "lat": 42.35229,
+        "lon": -77.875,
+        "ele": 685,
+        "wikidata": "Q34876462",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jimmerson Hill",
+        "lat": 42.15006,
+        "lon": -78.82087,
+        "ele": 675,
+        "wikidata": "Q34876585",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Johnny Watt Hill",
+        "lat": 42.12201,
+        "lon": -78.90893,
+        "ele": 563,
+        "wikidata": "Q34876786",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Johnson Hill",
+        "lat": 42.11007,
+        "lon": -78.1814,
+        "ele": 697,
+        "wikidata": "Q34876836",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Jordan Hill",
+        "lat": 42.11868,
+        "lon": -78.17918,
+        "ele": 708,
+        "wikidata": "Q34825148",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Keller Hill",
+        "lat": 42.18729,
+        "lon": -78.31196,
+        "ele": 674,
+        "wikidata": "Q34825424",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Kingsley Knoll",
+        "lat": 42.80784,
+        "lon": -78.13779,
+        "ele": 513,
+        "wikidata": "Q49041792",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Laidlaw Hill",
+        "lat": 42.27284,
+        "lon": -78.50336,
+        "ele": 697,
+        "wikidata": "Q49043205",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Lidke Hill",
+        "lat": 43.12312,
+        "lon": -78.04363,
+        "ele": 214,
+        "wikidata": "Q34826011",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Maple Hill",
+        "lat": 42.21701,
+        "lon": -78.39807,
+        "ele": 645,
+        "wikidata": "Q34927081",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "McCarty Hill",
+        "lat": 42.25423,
+        "lon": -78.6942,
+        "ele": 710,
+        "wikidata": "Q49048576",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Merchants Hill",
+        "lat": 42.84062,
+        "lon": -78.23613,
+        "ele": 467,
+        "wikidata": "Q34827431",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Meservey Hill",
+        "lat": 42.08535,
+        "lon": -77.96917,
+        "ele": 673,
+        "wikidata": "Q34827478",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Miller Hill",
+        "lat": 42.40868,
+        "lon": -77.79389,
+        "ele": 606,
+        "wikidata": "Q34827953",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Mount Moriah",
+        "lat": 42.0734,
+        "lon": -78.56169,
+        "ele": 708,
+        "wikidata": "Q34882651",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Munson Hill",
+        "lat": 43.04062,
+        "lon": -77.75917,
+        "ele": 198,
+        "wikidata": "Q34928766",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Murder Hill",
+        "lat": 42.25312,
+        "lon": -78.72753,
+        "ele": 667,
+        "wikidata": "Q34884163",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Nichols Hill",
+        "lat": 43.09617,
+        "lon": -78.3278,
+        "ele": 225,
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "North Hill",
+        "lat": 42.42062,
+        "lon": -77.78333,
+        "ele": 563,
+        "wikidata": "Q34886168",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Oak Hill",
+        "lat": 42.20229,
+        "lon": -77.97389,
+        "ele": 696,
+        "wikidata": "Q34886931",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Oak Hill",
+        "lat": 42.6959,
+        "lon": -78.0689,
+        "ele": 518,
+        "wikidata": "Q34887163",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Orr Hill",
+        "lat": 42.80673,
+        "lon": -78.32363,
+        "ele": 497,
+        "wikidata": "Q34828354",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Page Hill",
+        "lat": 42.84784,
+        "lon": -78.14751,
+        "ele": 475,
+        "wikidata": "Q34828560",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Parker Hill",
+        "lat": 42.16006,
+        "lon": -78.86392,
+        "ele": 708,
+        "wikidata": "Q34889010",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Parker Hill",
+        "lat": 42.41284,
+        "lon": -78.7142,
+        "ele": 605,
+        "wikidata": "Q34889035",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Paul Wise Hill",
+        "lat": 42.10673,
+        "lon": -78.43613,
+        "ele": 534,
+        "wikidata": "Q34828977",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Peacock Hill",
+        "lat": 42.28451,
+        "lon": -77.99723,
+        "ele": 641,
+        "wikidata": "Q34829139",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pickup Hill",
+        "lat": 42.27589,
+        "lon": -79.12671,
+        "ele": 630,
+        "wikidata": "Q34891688",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pierce Hill",
+        "lat": 42.26673,
+        "lon": -78.47558,
+        "ele": 691,
+        "wikidata": "Q34892183",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pigeon Hill",
+        "lat": 42.41895,
+        "lon": -78.4228,
+        "ele": 624,
+        "wikidata": "Q34892339",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pikes Peak",
+        "lat": 42.85131,
+        "lon": -78.01494,
+        "ele": 361,
+        "wikidata": "Q34892639",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pine Hill",
+        "lat": 42.10506,
+        "lon": -78.9906,
+        "ele": 649,
+        "wikidata": "Q34893775",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pine Hill",
+        "lat": 43.18017,
+        "lon": -78.2646,
+        "ele": 217,
+        "wikidata": "Q34894222",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pine Hill",
+        "lat": 43.20478,
+        "lon": -77.83334,
+        "ele": 166,
+        "wikidata": "Q34894136",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pingry Hill",
+        "lat": 42.16618,
+        "lon": -77.82416,
+        "ele": 677,
+        "wikidata": "Q34895017",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pinnacle Hill",
+        "lat": 43.04145,
+        "lon": -77.93084,
+        "ele": 233,
+        "wikidata": "Q34895393",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Poland Hill",
+        "lat": 42.81117,
+        "lon": -78.34446,
+        "ele": 465,
+        "wikidata": "Q34896616",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pope Hill",
+        "lat": 42.40829,
+        "lon": -79.14378,
+        "ele": 507,
+        "wikidata": "Q34897374",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Poverty Hill",
+        "lat": 42.30895,
+        "lon": -78.69836,
+        "ele": 706,
+        "wikidata": "Q34898505",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Rauber Hill",
+        "lat": 42.10951,
+        "lon": -77.92167,
+        "ele": 648,
+        "wikidata": "Q34829681",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Rice Hill",
+        "lat": 42.62534,
+        "lon": -78.7667,
+        "ele": 466,
+        "wikidata": "Q34830035",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Richburg Hill",
+        "lat": 42.08979,
+        "lon": -78.12918,
+        "ele": 709,
+        "wikidata": "Q34830134",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Round Top",
+        "lat": 42.09145,
+        "lon": -78.90809,
+        "ele": 635,
+        "wikidata": "Q34831173",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Round Top",
+        "lat": 42.18951,
+        "lon": -77.95861,
+        "ele": 637,
+        "wikidata": "Q34831157",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Round Top",
+        "lat": 42.53395,
+        "lon": -77.89278,
+        "ele": 568,
+        "wikidata": "Q34831297",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Round Top Hill",
+        "lat": 42.38478,
+        "lon": -79.15115,
+        "ele": 512,
+        "wikidata": "Q34831414",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Sand Hill",
+        "lat": 42.32257,
+        "lon": -77.75722,
+        "ele": 494,
+        "wikidata": "Q34903123",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Scarff Hill",
+        "lat": 42.88562,
+        "lon": -78.09835,
+        "ele": 424,
+        "wikidata": "Q34904174",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Science Hill",
+        "lat": 43.04673,
+        "lon": -77.92862,
+        "ele": 216,
+        "wikidata": "Q34904438",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Scott Hill",
+        "lat": 42.49812,
+        "lon": -77.80444,
+        "ele": 591,
+        "wikidata": "Q34904501",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Shutts Hill",
+        "lat": 42.21284,
+        "lon": -78.82781,
+        "ele": 733,
+        "wikidata": "Q34832450",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Sinclair Hill",
+        "lat": 42.94256,
+        "lon": -77.87112,
+        "ele": 245,
+        "wikidata": "Q34832767",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Skates Hill",
+        "lat": 42.86895,
+        "lon": -78.15168,
+        "ele": 365,
+        "wikidata": "Q34832846",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Skunk Hill",
+        "lat": 42.88728,
+        "lon": -78.05973,
+        "ele": 362,
+        "wikidata": "Q34832925",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "South Hill",
+        "lat": 42.32561,
+        "lon": -79.15032,
+        "ele": 591,
+        "wikidata": "Q34833889",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Sulphur Spring Hill",
+        "lat": 42.83339,
+        "lon": -78.15168,
+        "ele": 499,
+        "wikidata": "Q34843946",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Swift Hill",
+        "lat": 42.46395,
+        "lon": -78.23723,
+        "ele": 612,
+        "wikidata": "Q34810906",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Temperance Hill",
+        "lat": 42.98923,
+        "lon": -78.1164,
+        "ele": 296,
+        "wikidata": "Q34811954",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Tildon Hill",
+        "lat": 42.44785,
+        "lon": -77.76194,
+        "ele": 555,
+        "wikidata": "Q34812972",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Titus Hill",
+        "lat": 42.83089,
+        "lon": -78.11668,
+        "ele": 464,
+        "wikidata": "Q34813177",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Torpy Hill",
+        "lat": 43.102,
+        "lon": -77.99307,
+        "ele": 205,
+        "wikidata": "Q34813677",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Tower Hill",
+        "lat": 43.0895,
+        "lon": -78.11418,
+        "ele": 220,
+        "wikidata": "Q34813817",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Townsend Hill",
+        "lat": 42.56701,
+        "lon": -78.72114,
+        "ele": 533,
+        "wikidata": "Q34813925",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Tug Hill",
+        "lat": 42.28701,
+        "lon": -78.92031,
+        "ele": 630,
+        "wikidata": "Q34814484",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Typnahda Mountain",
+        "lat": 42.07312,
+        "lon": -78.35279,
+        "ele": 624,
+        "wikidata": "Q34815448",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Union Hill",
+        "lat": 42.23229,
+        "lon": -78.36057,
+        "ele": 676,
+        "wikidata": "Q34816465",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Vermont Hill",
+        "lat": 42.66284,
+        "lon": -78.52919,
+        "ele": 488,
+        "wikidata": "Q34817382",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Vorhees Hill",
+        "lat": 42.1084,
+        "lon": -77.87055,
+        "ele": 685,
+        "wikidata": "Q34817881",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Watson Hill",
+        "lat": 42.29145,
+        "lon": -78.73475,
+        "ele": 697,
+        "wikidata": "Q34819043",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "West Hill",
+        "lat": 42.98061,
+        "lon": -78.60003,
+        "ele": 228,
+        "wikidata": "Q34819508",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Blue Hill",
+        "lat": 42.50201,
+        "lon": -78.53308,
+        "ele": 614,
+        "wikidata": "Q34805697",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Canada Hill",
+        "lat": 42.35229,
+        "lon": -78.59197,
+        "ele": 647,
+        "wikidata": "Q34807507",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Carroll Hill",
+        "lat": 42.27728,
+        "lon": -78.84281,
+        "ele": 623,
+        "wikidata": "Q34807700",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Pine Hill",
+        "lat": 42.25701,
+        "lon": -77.77805,
+        "ele": 666,
+        "wikidata": "Q34893749",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Roundtop",
+        "lat": 42.12451,
+        "lon": -77.83944,
+        "ele": 721,
+        "wikidata": "Q34831441",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "South Hill",
+        "lat": 42.59089,
+        "lon": -78.66336,
+        "ele": 540,
+        "wikidata": "Q34833972",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Tug Hill",
+        "lat": 42.36562,
+        "lon": -78.52002,
+        "ele": 654,
+        "wikidata": "Q34814495",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Wheelers Hill",
+        "lat": 42.79951,
+        "lon": -78.18001,
+        "ele": 486,
+        "wikidata": "Q34820101",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Woodchuck Hill",
+        "lat": 43.17228,
+        "lon": -77.77556,
+        "ele": 200,
+        "wikidata": "Q34821797",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Smith Mountain",
+        "lat": 42.2234,
+        "lon": -78.68586,
+        "ele": 678,
+        "wikidata": "Q34908499",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Lindell Lookout",
+        "lat": 42.2009,
+        "lon": -78.7142,
+        "ele": 707,
+        "wikidata": "Q34826184",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Mount Tug",
+        "lat": 42.40701,
+        "lon": -78.7367,
+        "ele": 587,
+        "wikidata": "Q34928076",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Oyer Mountain",
+        "lat": 42.21867,
+        "lon": -78.70253,
+        "ele": 647,
+        "wikidata": "Q34828466",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Saratoga Hill (9m)",
+        "lat": 42.95077,
+        "lon": -78.79057,
+        "ele": 180,
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Sledding Hill",
+        "lat": 43.26171,
+        "lon": -79.05142,
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Sledding hill",
+        "lat": 43.18256,
+        "lon": -78.91024,
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Clare Benchmark",
+        "lat": 42.05037,
+        "lon": -78.54002,
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Sardinia Benchmark",
+        "lat": 42.57621,
+        "lon": -78.56639,
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Reservation Hill",
+        "lat": 42.23173,
+        "lon": -78.30002,
+        "wikidata": "Q34829955",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Old Baldy",
+        "lat": 42.05701,
+        "lon": -78.41585,
+        "wikidata": "Q34887483",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Mount Herman",
+        "lat": 42.05368,
+        "lon": -78.42723,
+        "wikidata": "Q34881521",
+        "natural": "peak"
+      },
+      {
+        "kind": "peak",
+        "name": "Painter's Summit",
+        "lat": 42.28647,
+        "lon": -78.7587,
+        "ele": 658,
+        "natural": "peak"
+      }
+    ],
+    "attraction": [
+      {
+        "kind": "attraction",
+        "name": "Fisher Price Toy Store",
+        "lat": 42.7728,
+        "lon": -78.61213,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Delaware Park Japanese Gardens",
+        "lat": 42.93521,
+        "lon": -78.87513,
+        "tourism": "attraction",
+        "leisure": "garden"
+      },
+      {
+        "kind": "attraction",
+        "name": "Hornblower Niagara Cruises",
+        "lat": 43.08787,
+        "lon": -79.07297,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Whirlpool Rapids",
+        "lat": 43.12078,
+        "lon": -79.07039,
+        "ele": 171,
+        "wikipedia": "en:Niagara Whirlpool",
+        "wikidata": "Q7023799",
+        "tourism": "attraction",
+        "waterway": "rapids"
+      },
+      {
+        "kind": "attraction",
+        "name": "Charles & Marie Fontana Boathouse Tour",
+        "lat": 42.90046,
+        "lon": -78.90187,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "William Kirby's House",
+        "lat": 43.25888,
+        "lon": -79.0729,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Butlers Burial Ground",
+        "lat": 43.2512,
+        "lon": -79.09048,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Niagara City Cruises",
+        "lat": 43.08749,
+        "lon": -79.07212,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Whirlpool Aero Car",
+        "lat": 43.11802,
+        "lon": -79.06882,
+        "wikipedia": "en:Whirlpool Aero Car",
+        "wikidata": "Q903727",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Chili Historical Society",
+        "lat": 43.05904,
+        "lon": -77.79603,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Whirlpool Jetboat Tours",
+        "lat": 43.17268,
+        "lon": -79.04908,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Niagara's 200 FT Drop",
+        "lat": 43.09117,
+        "lon": -79.07358,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "The Niagara SkyWheel",
+        "lat": 43.09079,
+        "lon": -79.07552,
+        "wikipedia": "en:Niagara SkyWheel",
+        "wikidata": "Q1217710",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Niagara Wax Museum of History",
+        "lat": 43.08634,
+        "lon": -79.06426,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Cave of the Winds",
+        "lat": 43.08365,
+        "lon": -79.07128,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "USS Grenadier (SS210)",
+        "lat": 42.87814,
+        "lon": -78.88123,
+        "wikipedia": "en:USS Grenadier (SS-210)",
+        "wikidata": "Q7869851",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Maid of the Mist",
+        "lat": 43.08751,
+        "lon": -79.06903,
+        "wikipedia": "en:Maid of the Mist",
+        "wikidata": "Q981249",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Nightmares",
+        "lat": 43.09335,
+        "lon": -79.07426,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Eternal Flame Falls",
+        "lat": 42.70185,
+        "lon": -78.75176,
+        "wikipedia": "en:Eternal Flame Falls",
+        "wikidata": "Q5402647",
+        "tourism": "attraction",
+        "waterway": "waterfall"
+      },
+      {
+        "kind": "attraction",
+        "name": "Hamburg Fairgrounds",
+        "lat": 42.73788,
+        "lon": -78.81429,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Haunted House of Wax",
+        "lat": 43.08584,
+        "lon": -79.06328,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Thunder Theater",
+        "lat": 43.08674,
+        "lon": -79.06395,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "One Niagara Welcome Center",
+        "lat": 43.08745,
+        "lon": -79.06414,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Lucy Smith & Colesville",
+        "lat": 42.84917,
+        "lon": -78.86324,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Amphibian and Reptile House",
+        "lat": 42.93972,
+        "lon": -78.85388,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Gorilla",
+        "lat": 42.93896,
+        "lon": -78.85445,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Bison",
+        "lat": 42.93908,
+        "lon": -78.85524,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Gemsbok",
+        "lat": 42.94009,
+        "lon": -78.85469,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Zebra",
+        "lat": 42.94006,
+        "lon": -78.8539,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Roan Antelope",
+        "lat": 42.93993,
+        "lon": -78.85312,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Addax",
+        "lat": 42.93988,
+        "lon": -78.85282,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Vanishing Animals South",
+        "lat": 42.93923,
+        "lon": -78.85502,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Vanishing Animals North",
+        "lat": 42.93991,
+        "lon": -78.85442,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Triangle 1 Monument",
+        "lat": 42.08943,
+        "lon": -78.01853,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Boundary",
+        "lat": 42.42663,
+        "lon": -78.71755,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Just Christmas",
+        "lat": 43.25514,
+        "lon": -79.07204,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Marion Steam Shovel",
+        "lat": 42.99256,
+        "lon": -77.93812,
+        "wikipedia": "en:Marion Steam Shovel (Le Roy, New York)",
+        "wikidata": "Q6765375",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Ebenezer Settlement",
+        "lat": 42.99666,
+        "lon": -79.02751,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Rolling Hills Asylum",
+        "lat": 42.88118,
+        "lon": -78.1328,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Journey Behind the Falls",
+        "lat": 43.07952,
+        "lon": -79.07908,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Niagara’s Fury",
+        "lat": 43.07934,
+        "lon": -79.0792,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "White Water Walk",
+        "lat": 43.11102,
+        "lon": -79.06045,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Floral Showhouse",
+        "lat": 43.07249,
+        "lon": -79.07684,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Thompson Point",
+        "lat": 43.12408,
+        "lon": -79.06852,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Clifton Hill",
+        "lat": 43.09145,
+        "lon": -79.0749,
+        "wikidata": "Q5133241",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Floral Clock and Lilac Grove",
+        "lat": 43.14951,
+        "lon": -79.04723,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Niagara Parks Botanical Gardens",
+        "lat": 43.13635,
+        "lon": -79.0549,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Oakes Garden Theatre",
+        "lat": 43.09041,
+        "lon": -79.0721,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Olde Towne Gardens",
+        "lat": 43.23795,
+        "lon": -79.16169,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Fort George – Parks Canada",
+        "lat": 43.2498,
+        "lon": -79.06142,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Niagara Speedway",
+        "lat": 43.09091,
+        "lon": -79.07677,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Blast Off",
+        "lat": 42.92939,
+        "lon": -78.38499,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Scrambler",
+        "lat": 42.92963,
+        "lon": -78.38587,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Haymaker",
+        "lat": 42.92851,
+        "lon": -78.38483,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Skycoaster",
+        "lat": 42.92938,
+        "lon": -78.38444,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Beaver Brothers' Bay",
+        "lat": 42.9283,
+        "lon": -78.38352,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Silver Bullet",
+        "lat": 42.92853,
+        "lon": -78.38433,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Carousel",
+        "lat": 42.92914,
+        "lon": -78.38506,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Corn Popper",
+        "lat": 42.92755,
+        "lon": -78.38334,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Rowdy's Heave-Ho!",
+        "lat": 42.92748,
+        "lon": -78.38132,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Moose On The Loose",
+        "lat": 42.92745,
+        "lon": -78.3815,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Raccoon Rally",
+        "lat": 42.92786,
+        "lon": -78.38223,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Sleighride",
+        "lat": 42.9276,
+        "lon": -78.38252,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Prospect Point",
+        "lat": 43.08614,
+        "lon": -79.0697,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Adventure City",
+        "lat": 43.09227,
+        "lon": -79.07157,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Wizard's Indoor Golf",
+        "lat": 43.09147,
+        "lon": -79.07549,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Niagara Falls Air Tours",
+        "lat": 43.1899,
+        "lon": -79.16973,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Tantrum",
+        "lat": 42.92686,
+        "lon": -78.38364,
+        "wikipedia": "en:Tantrum (roller coaster)",
+        "wikidata": "Q60770886",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Six Flags SkyScreamer",
+        "lat": 42.93036,
+        "lon": -78.38226,
+        "wikipedia": "en:SkyScreamer",
+        "wikidata": "Q7537204",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Schoellkopf Power Plant Ruins",
+        "lat": 43.0928,
+        "lon": -79.06283,
+        "wikipedia": "en:Schoellkopf Power Station",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "hidden waterfall",
+        "lat": 42.36332,
+        "lon": -78.1046,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Mystery Maze",
+        "lat": 43.09193,
+        "lon": -79.07491,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "The Crystal Cave",
+        "lat": 43.09189,
+        "lon": -79.07547,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Griffis Sculpture Park: Mill Valley Road site",
+        "lat": 42.372,
+        "lon": -78.69313,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Griffis Sculpture Park: Rohr Hill site",
+        "lat": 42.38717,
+        "lon": -78.6824,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "House of Frankenstein",
+        "lat": 43.09186,
+        "lon": -79.0756,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Frank'N Coaster",
+        "lat": 43.09192,
+        "lon": -79.07554,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "The Bone Zone",
+        "lat": 42.93909,
+        "lon": -78.85354,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Sea Lion Cove",
+        "lat": 42.93762,
+        "lon": -78.85202,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Pirate",
+        "lat": 42.92921,
+        "lon": -78.38302,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Viper",
+        "lat": 42.92833,
+        "lon": -78.38123,
+        "wikipedia": "en:Viper (Six Flags Darien Lake)",
+        "wikidata": "Q2527551",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Flotation Station Lazy River",
+        "lat": 42.92625,
+        "lon": -78.38595,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Predator",
+        "lat": 42.92926,
+        "lon": -78.38608,
+        "wikipedia": "en:Predator (roller coaster)",
+        "wikidata": "Q2108259",
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Grizzly Run",
+        "lat": 42.92719,
+        "lon": -78.38141,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Big Kahuna",
+        "lat": 42.92756,
+        "lon": -78.38695,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Ride of Steel",
+        "lat": 42.92931,
+        "lon": -78.38677,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Mind Eraser",
+        "lat": 42.926,
+        "lon": -78.38254,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Cave of the Winds",
+        "lat": 43.08234,
+        "lon": -79.07092,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Buffal \"O\"",
+        "lat": 42.86939,
+        "lon": -78.87152,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "The Tunnel at Niagara Parks Power Station",
+        "lat": 43.07514,
+        "lon": -79.07934,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Genesee Falls Balloon",
+        "lat": 42.56765,
+        "lon": -78.04627,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "International Boundary Line",
+        "lat": 42.90691,
+        "lon": -78.90599,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "International Boundary Line",
+        "lat": 43.09011,
+        "lon": -79.06778,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Zipline To The Falls",
+        "lat": 43.08879,
+        "lon": -79.07355,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Balloons Over Letchworth Launch",
+        "lat": 42.58198,
+        "lon": -78.04509,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Grumman F6F Hellcat (Replica)",
+        "lat": 42.79652,
+        "lon": -77.84568,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "The Haunted House",
+        "lat": 43.09125,
+        "lon": -79.0742,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Charlotte Johnson Dett",
+        "lat": 43.08619,
+        "lon": -79.06036,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Votes for Women",
+        "lat": 43.08254,
+        "lon": -79.05745,
+        "tourism": "attraction"
+      },
+      {
+        "kind": "attraction",
+        "name": "Old Falls Street Piano",
+        "lat": 43.08599,
+        "lon": -79.06273,
+        "tourism": "attraction",
+        "leisure": "piano"
+      }
+    ],
+    "reserve": [
+      {
+        "kind": "reserve",
+        "name": "Genesee Valley Greenway State Park",
+        "lat": 42.36737,
+        "lon": -78.1346,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Crab Hollow State Forest",
+        "lat": 42.31981,
+        "lon": -78.2153,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Tifft Nature Preserve",
+        "lat": 42.84707,
+        "lon": -78.85454,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Times Beach Nature Preserve",
+        "lat": 42.87393,
+        "lon": -78.88526,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Penn Dixie Fossil Park & Nature Reserve",
+        "lat": 42.77789,
+        "lon": -78.83163,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Christine Sevilla Wetlands Preserve",
+        "lat": 42.97368,
+        "lon": -77.81656,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Bully Hill State Forest",
+        "lat": 42.34224,
+        "lon": -77.7984,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Bush Hill State Forest",
+        "lat": 42.35973,
+        "lon": -78.3553,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Allen Lake State Forest",
+        "lat": 42.36944,
+        "lon": -78.07992,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Canadaway Creek Wildlife Management Area",
+        "lat": 42.37254,
+        "lon": -79.22936,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Karr Valley Creek State Forest",
+        "lat": 42.34095,
+        "lon": -77.85911,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Swift Hill State Forest",
+        "lat": 42.45169,
+        "lon": -78.22721,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "English Hill State Forest",
+        "lat": 42.46772,
+        "lon": -77.9816,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Lost Nation State Forest",
+        "lat": 42.51032,
+        "lon": -78.26083,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Ossian State Forest",
+        "lat": 42.49305,
+        "lon": -77.82746,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Canaseraga State Forest",
+        "lat": 42.4902,
+        "lon": -77.78229,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hatch Creek State Forest",
+        "lat": 42.24055,
+        "lon": -79.21775,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Slader Creek State Forest",
+        "lat": 42.41666,
+        "lon": -77.81462,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Farmersville State Forest",
+        "lat": 42.40767,
+        "lon": -78.32319,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Cattaraugus State Forest",
+        "lat": 42.31999,
+        "lon": -78.81858,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hiltonville State Forest",
+        "lat": 42.36652,
+        "lon": -77.8685,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Boyce Hill State Forest",
+        "lat": 42.32226,
+        "lon": -78.53546,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Windfall Creek State Forest",
+        "lat": 42.13944,
+        "lon": -78.62375,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Sonyea State Forest",
+        "lat": 42.66467,
+        "lon": -77.83601,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Raecher Hill State Forest",
+        "lat": 42.22016,
+        "lon": -78.58943,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Bald Mountain State Forest",
+        "lat": 42.31851,
+        "lon": -77.971,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Bear Creek State Forest",
+        "lat": 42.35502,
+        "lon": -78.48676,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Cold Creek State Forest",
+        "lat": 42.51337,
+        "lon": -78.21951,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Bryant Hill State Forest",
+        "lat": 42.28632,
+        "lon": -78.57508,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Elkdale State Forest",
+        "lat": 42.22806,
+        "lon": -78.78149,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Harwood Lake Multiple Use Area",
+        "lat": 42.38172,
+        "lon": -78.38054,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Reinstein Woods Nature Preserve And Environmental Education Center",
+        "lat": 42.88629,
+        "lon": -78.72089,
+        "wikipedia": "en:Reinstein Woods Nature Preserve",
+        "wikidata": "Q7310426",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Tillman Road Wildlife Management Area",
+        "lat": 42.9607,
+        "lon": -78.60766,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hartson Swamp Wildlife Management Area",
+        "lat": 42.12791,
+        "lon": -79.13684,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hampton Brook Woods Wildlife Management Area",
+        "lat": 42.70767,
+        "lon": -78.83693,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Randolph Fish Hatchery",
+        "lat": 42.15345,
+        "lon": -78.93974,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Onondaga Escarpment Unique Area",
+        "lat": 43.02533,
+        "lon": -78.48031,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Cedar Springs Fish Hatchery",
+        "lat": 43.02771,
+        "lon": -77.83632,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Birch Run Ponds Wildlife Management Area",
+        "lat": 42.08884,
+        "lon": -78.55909,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Spicer Creek Wildlife Management Area",
+        "lat": 43.02733,
+        "lon": -78.89629,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Motor Island Wildlife Management Area",
+        "lat": 42.96588,
+        "lon": -78.93524,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Silver Lake Outlet Wildlife Management Area",
+        "lat": 42.71608,
+        "lon": -78.02323,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Sandy Creek Wetlands",
+        "lat": 43.34994,
+        "lon": -77.8894,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hanging Bog Wildlife Management Area - Showy Lady Slipper",
+        "lat": 42.34347,
+        "lon": -78.23382,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Plumbottom State Forest",
+        "lat": 42.22861,
+        "lon": -77.95894,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Golden Hill State Park",
+        "lat": 43.37017,
+        "lon": -78.47817,
+        "wikipedia": "en:Golden Hill State Park",
+        "wikidata": "Q5579561",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Strawberry Island",
+        "lat": 42.95486,
+        "lon": -78.92396,
+        "wikipedia": "en:Strawberry Island (New York)",
+        "wikidata": "Q25222520",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Anna Mae Bacon Bird Sanctuary",
+        "lat": 42.71406,
+        "lon": -78.82784,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Stella Niagara Preserve",
+        "lat": 43.19988,
+        "lon": -79.04396,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Moss Lake",
+        "lat": 42.39749,
+        "lon": -78.18613,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Genesee Valley Greenway State Park",
+        "lat": 42.36795,
+        "lon": -78.13555,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Indian Fort Nature Preserve",
+        "lat": 42.7645,
+        "lon": -77.83456,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Beaver Meadow Audubon Center",
+        "lat": 42.67683,
+        "lon": -78.37676,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Clear Lake Wildlife Managment Area",
+        "lat": 42.55983,
+        "lon": -78.85076,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Scenic Woods",
+        "lat": 43.0342,
+        "lon": -78.91317,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Allenberg Bog Audubon Nature Preserve",
+        "lat": 42.2578,
+        "lon": -78.87645,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Allenberg Bog Audubon Nature Preserve",
+        "lat": 42.26922,
+        "lon": -78.87437,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Deer Lick Conservation Area",
+        "lat": 42.41626,
+        "lon": -78.89377,
+        "wikipedia": "en:Deer Lick Nature Sanctuary",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Sturgeon Point Nature Trail",
+        "lat": 42.68917,
+        "lon": -79.0424,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Chestnut Ridge Nature Center",
+        "lat": 43.09702,
+        "lon": -77.78078,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Salmon Creek Nature Preserve",
+        "lat": 43.29932,
+        "lon": -77.77141,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Willoughby Marsh Conservation Area",
+        "lat": 42.98498,
+        "lon": -79.09835,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Shriner's Creek Conservation Area",
+        "lat": 43.10492,
+        "lon": -79.14057,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Erie County Forest",
+        "lat": 42.54556,
+        "lon": -78.57815,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Erie County Forest",
+        "lat": 42.55677,
+        "lon": -78.5446,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Island Preserve",
+        "lat": 42.80564,
+        "lon": -77.80305,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Black Creek Park",
+        "lat": 43.07391,
+        "lon": -77.81147,
+        "wikidata": "Q4920602",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Tonawanda Wildlife Management Area",
+        "lat": 43.10952,
+        "lon": -78.46555,
+        "wikidata": "Q7820752",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Rattlesnake Hill Wildlife Management Area",
+        "lat": 42.52041,
+        "lon": -77.8487,
+        "ele": 456,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Turnpike State Forest",
+        "lat": 42.29363,
+        "lon": -77.84186,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hanging Bog Wildlife Management Area",
+        "lat": 42.31196,
+        "lon": -78.23588,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "South Valley State Forest",
+        "lat": 42.03931,
+        "lon": -79.0039,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Palmer's Pond State Forest",
+        "lat": 42.29368,
+        "lon": -77.89861,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "McCarty Hill State Forest",
+        "lat": 42.24631,
+        "lon": -78.69092,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Nine Mile Creek State Forest",
+        "lat": 42.14661,
+        "lon": -78.56171,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Boutwell Hill State Forest",
+        "lat": 42.31127,
+        "lon": -79.1765,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Rock City State Forest",
+        "lat": 42.21637,
+        "lon": -78.70694,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Braddock Bay Wildlife Management Area",
+        "lat": 43.30172,
+        "lon": -77.71421,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Phillips Creek State Forest",
+        "lat": 42.2606,
+        "lon": -77.85607,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Oak Orchard Wildlife Management Area",
+        "lat": 43.12041,
+        "lon": -78.29404,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Klipnocky State Forest",
+        "lat": 42.39216,
+        "lon": -77.82378,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Carlton Hill Multiple Use Area",
+        "lat": 42.83237,
+        "lon": -78.15634,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Keeney Swamp State Forest",
+        "lat": 42.41906,
+        "lon": -77.91252,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Gillies Hill State Forest",
+        "lat": 42.37299,
+        "lon": -77.94544,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Vandermark State Forest",
+        "lat": 42.21293,
+        "lon": -77.88755,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Coyle Hill State Forest",
+        "lat": 42.25743,
+        "lon": -78.10229,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Golden Hill State Forest",
+        "lat": 42.24428,
+        "lon": -78.5276,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Harris Hill State Forest",
+        "lat": 42.22379,
+        "lon": -79.1631,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Bucktooth State Forest",
+        "lat": 42.18699,
+        "lon": -78.83286,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Zoar Valley Multiple Use Area",
+        "lat": 42.4364,
+        "lon": -78.86543,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Rush Creek State Forest",
+        "lat": 42.34536,
+        "lon": -78.19573,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Crab Hollow State Forest",
+        "lat": 42.31869,
+        "lon": -78.26518,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Pine Hill State Forest",
+        "lat": 42.0888,
+        "lon": -78.97691,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Dobbins Memorial State Forest",
+        "lat": 42.27343,
+        "lon": -78.77338,
+        "ele": 647,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Zoar Valley Unique Area",
+        "lat": 42.43484,
+        "lon": -78.87348,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Jersey Hill State Forest",
+        "lat": 42.35416,
+        "lon": -77.89603,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Conewango Swamp Wildlife Management Area",
+        "lat": 42.18214,
+        "lon": -79.00525,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Genesee Valley Wildlife Management Area",
+        "lat": 42.51969,
+        "lon": -78.03888,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Keeney Swamp Wildlife Management Area",
+        "lat": 42.42447,
+        "lon": -77.89161,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hartland Swamp Wildlife Management Area",
+        "lat": 43.2867,
+        "lon": -78.59003,
+        "wikidata": "Q5674740",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "John White Wildlife Management Area",
+        "lat": 43.07816,
+        "lon": -78.38642,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Groveland Secondary Trailway",
+        "lat": 42.89106,
+        "lon": -78.07488,
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Great Baehre Swamp Wildlife Management Area",
+        "lat": 43.01132,
+        "lon": -78.73552,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Cazenovia Creek Wildlife Management Area",
+        "lat": 42.82904,
+        "lon": -78.72073,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Wag Trail",
+        "lat": 42.04953,
+        "lon": -77.9046,
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Clay Pond Wildlife Management Area",
+        "lat": 42.11683,
+        "lon": -79.17138,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Caledonia Fish Hatchery",
+        "lat": 42.98165,
+        "lon": -77.86014,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "East Koy Creek Fishing Access",
+        "lat": 42.56953,
+        "lon": -78.10127,
+        "leisure": "fishing"
+      },
+      {
+        "kind": "reserve",
+        "name": "Clear Creek Fishing Access",
+        "lat": 42.26155,
+        "lon": -79.15593,
+        "leisure": "fishing"
+      },
+      {
+        "kind": "reserve",
+        "name": "Mansfield Creek Fishing Access",
+        "lat": 42.34378,
+        "lon": -78.77129,
+        "leisure": "fishing"
+      },
+      {
+        "kind": "reserve",
+        "name": "Wiscoy Creek Fishing Access",
+        "lat": 42.55265,
+        "lon": -78.16531,
+        "leisure": "fishing"
+      },
+      {
+        "kind": "reserve",
+        "name": "Letchworth State Park",
+        "lat": 42.65816,
+        "lon": -77.97055,
+        "wikipedia": "en:Letchworth State Park",
+        "wikidata": "Q1303662"
+      },
+      {
+        "kind": "reserve",
+        "name": "Darien Lakes State Park",
+        "lat": 42.91179,
+        "lon": -78.41089,
+        "wikipedia": "en:Darien Lakes State Park",
+        "wikidata": "Q5222739",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Silver Lake State Park",
+        "lat": 42.67743,
+        "lon": -78.05582,
+        "wikipedia": "en:Silver Lake State Park (New York)",
+        "wikidata": "Q7516159",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Beaver Island State Park",
+        "lat": 42.96659,
+        "lon": -78.95471,
+        "ele": 179,
+        "wikipedia": "en:Beaver Island State Park",
+        "wikidata": "Q2488193",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Evangola State Park",
+        "lat": 42.60593,
+        "lon": -79.09818,
+        "wikipedia": "en:Evangola State Park",
+        "wikidata": "Q5415849",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Lakeside Beach State Park",
+        "lat": 43.36632,
+        "lon": -78.23886,
+        "wikipedia": "en:Lakeside Beach State Park",
+        "wikidata": "Q6479076",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Knox Farm State Park",
+        "lat": 42.77384,
+        "lon": -78.64936,
+        "wikipedia": "en:Knox Farm State Park",
+        "wikidata": "Q6423559",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Buckhorn Island State Park",
+        "lat": 43.05787,
+        "lon": -78.98599,
+        "wikipedia": "en:Buckhorn Island State Park",
+        "wikidata": "Q4983156",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Wilson-Tuscarora State Park",
+        "lat": 43.3054,
+        "lon": -78.85163,
+        "wikipedia": "en:Wilson-Tuscarora State Park",
+        "wikidata": "Q8022955",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Joseph Davis State Park",
+        "lat": 43.21269,
+        "lon": -79.0417,
+        "wikipedia": "en:Joseph Davis State Park",
+        "wikidata": "Q14706717",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Fort Niagara State Park",
+        "lat": 43.26133,
+        "lon": -79.05575,
+        "wikipedia": "en:Fort Niagara State Park",
+        "wikidata": "Q5471756",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Four Mile Creek State Park",
+        "lat": 43.27307,
+        "lon": -78.9976,
+        "wikipedia": "en:Four Mile Creek State Park",
+        "wikidata": "Q5475332",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Artpark State Park",
+        "lat": 43.15706,
+        "lon": -79.03994,
+        "wikipedia": "en:Earl W. Brydges Artpark State Park",
+        "wikidata": "Q5326140",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Whirlpool State Park",
+        "lat": 43.12076,
+        "lon": -79.05811,
+        "wikipedia": "en:Whirlpool State Park",
+        "wikidata": "Q7993814",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Reservoir State Park",
+        "lat": 43.13422,
+        "lon": -79.01374,
+        "wikipedia": "en:Reservoir State Park",
+        "wikidata": "Q7315323",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Devil's Hole State Park",
+        "lat": 43.13476,
+        "lon": -79.04629,
+        "wikipedia": "en:Devil's Hole State Park",
+        "wikidata": "Q5267167",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Niagara Falls State Park",
+        "lat": 43.08612,
+        "lon": -79.06293,
+        "wikipedia": "en:Niagara Falls State Park",
+        "wikidata": "Q1031716",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Genesee Valley Greenway State Park",
+        "lat": 42.67758,
+        "lon": -77.96053,
+        "wikipedia": "en:Genesee Valley Greenway",
+        "wikidata": "Q5532746",
+        "leisure": "park"
+      },
+      {
+        "kind": "reserve",
+        "name": "Oak Orchard State Marine Park",
+        "lat": 43.3679,
+        "lon": -78.19892,
+        "wikipedia": "en:Oak Orchard State Marine Park",
+        "wikidata": "Q7073642",
+        "leisure": "marina"
+      },
+      {
+        "kind": "reserve",
+        "name": "Iroquois National Wildlife Refuge",
+        "lat": 43.13342,
+        "lon": -78.39128,
+        "wikipedia": "en:Iroquois National Wildlife Refuge",
+        "wikidata": "Q14706556",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Genesee Valley Greenway State Park",
+        "lat": 42.36737,
+        "lon": -78.1346,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Allegany State Park",
+        "lat": 42.07433,
+        "lon": -78.79254,
+        "ele": 672,
+        "wikipedia": "en:Allegany State Park",
+        "wikidata": "Q4731236",
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Gas Springs State Forest",
+        "lat": 42.40291,
+        "lon": -77.85601,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "East Otto State Forest",
+        "lat": 42.43656,
+        "lon": -78.79164,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Kenneglenn Scenic & Nature Preserve",
+        "lat": 42.75932,
+        "lon": -78.54662,
+        "leisure": "nature_reserve"
+      },
+      {
+        "kind": "reserve",
+        "name": "Hamlin Beach State Park",
+        "lat": 43.36211,
+        "lon": -77.95676,
+        "wikipedia": "en:Hamlin Beach State Park",
+        "wikidata": "Q5645483",
+        "leisure": "park"
+      }
+    ],
+    "water": [
+      {
+        "kind": "water",
+        "name": "Sir Adam Beck",
+        "lat": 43.14797,
+        "lon": -79.06799,
+        "wikipedia": "en:Sir Adam Beck Hydroelectric Generating Stations",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Crystal Lake",
+        "lat": 42.46489,
+        "lon": -78.34337,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Green Lake",
+        "lat": 42.75723,
+        "lon": -78.75079,
+        "ele": 257,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Sherkston Quarry",
+        "lat": 42.87076,
+        "lon": -79.13346,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Turtle Pond",
+        "lat": 42.868,
+        "lon": -79.1319,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Muir Lake",
+        "lat": 43.01131,
+        "lon": -78.77619,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Cuba Lake",
+        "lat": 42.2485,
+        "lon": -78.29226,
+        "ele": 472,
+        "wikidata": "Q28229451",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Akron Reservoir",
+        "lat": 42.8658,
+        "lon": -78.35771,
+        "ele": 371,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "The Rez",
+        "lat": 42.88846,
+        "lon": -78.79608,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Mount Morris Lake",
+        "lat": 42.72406,
+        "lon": -77.91669,
+        "ele": 181,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Forebay Canal",
+        "lat": 43.14225,
+        "lon": -79.03048,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Dann Lake",
+        "lat": 43.06058,
+        "lon": -78.70459,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Harwood Lake",
+        "lat": 42.38276,
+        "lon": -78.37967,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Lime Lake",
+        "lat": 42.42771,
+        "lon": -78.48084,
+        "ele": 498,
+        "wikipedia": "en:Lime Lake (New York)",
+        "wikidata": "Q20657185",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Hyde Park Lake",
+        "lat": 43.10101,
+        "lon": -79.02161,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Rushford Lake",
+        "lat": 42.37446,
+        "lon": -78.20717,
+        "ele": 439,
+        "wikipedia": "en:Rushford Lake",
+        "wikidata": "Q7336520",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Attica Reservoir",
+        "lat": 42.7854,
+        "lon": -78.22647,
+        "ele": 482,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Albion Reservoir Number One",
+        "lat": 43.25269,
+        "lon": -78.24319,
+        "ele": 142,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Albion Reservoir Number Two",
+        "lat": 43.22618,
+        "lon": -78.25104,
+        "ele": 172,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Amity Lake",
+        "lat": 42.219,
+        "lon": -77.98869,
+        "ele": 507,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Attica Reservoir",
+        "lat": 42.83128,
+        "lon": -78.25823,
+        "ele": 354,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Clear Lake",
+        "lat": 42.55932,
+        "lon": -78.85178,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Foster Lake",
+        "lat": 42.23219,
+        "lon": -77.82563,
+        "ele": 690,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Lake Le Roy",
+        "lat": 42.79434,
+        "lon": -78.00016,
+        "ele": 392,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Matts Pond",
+        "lat": 42.84758,
+        "lon": -78.45879,
+        "ele": 326,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Middleport Reservoir",
+        "lat": 43.18843,
+        "lon": -78.47526,
+        "ele": 173,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Mill Pond",
+        "lat": 43.08376,
+        "lon": -78.05675,
+        "ele": 183,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Saunders Pond",
+        "lat": 42.23425,
+        "lon": -77.97949,
+        "ele": 531,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Saunders Pond",
+        "lat": 42.22939,
+        "lon": -77.98479,
+        "ele": 531,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Stevens Reservoir",
+        "lat": 42.83669,
+        "lon": -78.25396,
+        "ele": 363,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Spaulding Lake",
+        "lat": 42.97797,
+        "lon": -78.62718,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Spruce Lake",
+        "lat": 42.2609,
+        "lon": -78.69827,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Covered Well",
+        "lat": 42.5339,
+        "lon": -78.845,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Amherst Quarry Lake",
+        "lat": 42.94103,
+        "lon": -78.82366,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Allen Lake",
+        "lat": 42.38528,
+        "lon": -78.06678,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Orchard Park Reservoir",
+        "lat": 42.6911,
+        "lon": -78.65092,
+        "ele": 381,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "New Albion Lake",
+        "lat": 42.30165,
+        "lon": -78.91215,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Silver Creek Reservoir",
+        "lat": 42.46826,
+        "lon": -79.09313,
+        "ele": 347,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Forebay",
+        "lat": 43.07463,
+        "lon": -79.07815,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Tonawanda Creek",
+        "lat": 43.02396,
+        "lon": -78.83342,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Lake Ontario",
+        "lat": 43.73408,
+        "lon": -77.98532,
+        "ele": 75,
+        "wikipedia": "en:Lake Ontario",
+        "wikidata": "Q1062",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Lake LaSalle (North Bay)",
+        "lat": 43.00793,
+        "lon": -78.78317,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Lake LaSalle",
+        "lat": 43.00379,
+        "lon": -78.77894,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Tonawanda Creek",
+        "lat": 43.05596,
+        "lon": -78.80668,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Glenwood Lake",
+        "lat": 43.23153,
+        "lon": -78.38985,
+        "ele": 132,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Waterport Reservoir",
+        "lat": 43.31261,
+        "lon": -78.27245,
+        "ele": 101,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Beth Pond",
+        "lat": 42.85146,
+        "lon": -78.85896,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Tonawanda Creek",
+        "lat": 43.02183,
+        "lon": -78.87519,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Myers Lake East",
+        "lat": 43.18288,
+        "lon": -78.92293,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Myers Lake West",
+        "lat": 43.18314,
+        "lon": -78.92596,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Chippawa-Queenston Power Canal",
+        "lat": 43.12293,
+        "lon": -79.07749,
+        "natural": "water",
+        "waterway": "canal"
+      },
+      {
+        "kind": "water",
+        "name": "Boyer's Creek",
+        "lat": 43.00217,
+        "lon": -79.03261,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Chapin Pond",
+        "lat": 42.99605,
+        "lon": -78.12741,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Tuscarora Bay",
+        "lat": 43.31526,
+        "lon": -78.84119,
+        "ele": 76,
+        "wikidata": "Q34726321",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Palmers Pond",
+        "lat": 42.2844,
+        "lon": -77.89645,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Darien Lake",
+        "lat": 42.93194,
+        "lon": -78.38682,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Lake Erie",
+        "lat": 42.14326,
+        "lon": -81.1626,
+        "ele": 173,
+        "wikipedia": "en:Lake Erie",
+        "wikidata": "Q5492",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Ellicott Creek",
+        "lat": 43.012,
+        "lon": -78.81943,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Beaver Creek",
+        "lat": 42.96069,
+        "lon": -78.95995,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "East Branch Twelvemile Creek",
+        "lat": 43.30967,
+        "lon": -78.83678,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Horseshoe Lake",
+        "lat": 43.0028,
+        "lon": -78.12267,
+        "ele": 237,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Moores Pond",
+        "lat": 42.47587,
+        "lon": -78.34385,
+        "wikidata": "Q49306142",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Hoyt Lake",
+        "lat": 42.93291,
+        "lon": -78.87117,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Ringneck Marsh",
+        "lat": 43.13864,
+        "lon": -78.37506,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Cayuga Pool",
+        "lat": 43.12451,
+        "lon": -78.44359,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Oneida Pool",
+        "lat": 43.13894,
+        "lon": -78.40495,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Harlow Lake",
+        "lat": 42.90563,
+        "lon": -78.43074,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Quaker Lake",
+        "lat": 42.04206,
+        "lon": -78.86623,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Red House Lake",
+        "lat": 42.10326,
+        "lon": -78.74334,
+        "wikidata": "Q30624667",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Secluded Swamp",
+        "lat": 42.88861,
+        "lon": -78.72167,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Flattail Lake",
+        "lat": 42.88737,
+        "lon": -78.72044,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "North Marsh",
+        "lat": 43.12371,
+        "lon": -78.32148,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Allegheny Reservoir",
+        "lat": 41.9407,
+        "lon": -78.90713,
+        "wikipedia": "en:Allegheny Reservoir",
+        "wikidata": "Q4731332",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Indian Falls Lake",
+        "lat": 43.02693,
+        "lon": -78.41472,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Silver Lake",
+        "lat": 42.69677,
+        "lon": -78.03492,
+        "wikidata": "Q30609836",
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Twin Ponds",
+        "lat": 42.83188,
+        "lon": -78.15839,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Ghost Pond",
+        "lat": 42.67474,
+        "lon": -78.37136,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Beaver Pond",
+        "lat": 42.67176,
+        "lon": -78.38277,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "Rainbow Lake",
+        "lat": 42.35215,
+        "lon": -78.69681,
+        "ele": 559,
+        "natural": "water"
+      },
+      {
+        "kind": "water",
+        "name": "South Park Lake",
+        "lat": 42.83054,
+        "lon": -78.83198,
+        "natural": "water"
+      }
+    ]
+  }
+}

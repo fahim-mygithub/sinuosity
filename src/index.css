@@ -1,0 +1,29 @@
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { --sheet-peek: 168px; }
+* { -webkit-tap-highlight-color: transparent; }
+html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; overscroll-behavior: none; }
+#map { height: 100%; width: 100%; background: #0f172a; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(245, 158, 11, 0.35); border-radius: 99px; }
+
+input[type='range'] { -webkit-appearance: none; appearance: none; background: transparent; height: 36px; }
+input[type='range']::-webkit-slider-runnable-track { height: 4px; background: #334155; border-radius: 99px; }
+input[type='range']::-moz-range-track { height: 4px; background: #334155; border-radius: 99px; }
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; height: 26px; width: 26px; border-radius: 50%;
+  background: #34d399; border: 3px solid #022c22; margin-top: -11px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+input[type='range']::-moz-range-thumb { height: 26px; width: 26px; border-radius: 50%; background: #34d399; border: 3px solid #022c22; }
+
+.sheet { transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); touch-action: none; max-height: 88vh; }
+.sheet.dragging { transition: none; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.animate-fadeIn { animation: fadeIn 0.25s ease both; }
+.leaflet-popup-content-wrapper { border-radius: 12px; }

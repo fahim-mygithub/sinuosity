@@ -1,0 +1,684 @@
+{
+  "keptCount": 7,
+  "routes": [
+    {
+      "route": {
+        "id": "niagara-gorge-rim-lewiston-sunset",
+        "name": "Niagara Gorge Rim to Lewiston Sunset Run",
+        "theme": "Gorge-rim river cruiser",
+        "region": "Niagara Gorge / Robert Moses (Niagara Scenic) Parkway, Niagara County, Western NY",
+        "summary": "A north-running cruise along the US rim of the Niagara Gorge on the still-drivable northern Robert Moses / Niagara Scenic Parkway, starting north of the decommissioned downtown rim segment near Whirlpool Street and threading Whirlpool and Devil's Hole State Parks before dropping into Lewiston, passing Artpark on the river bluff, and hugging Lower River Road (NY-18F) north to Fort Niagara, where the river spills into Lake Ontario at sunset.",
+        "rubric": {
+          "curvature": 4,
+          "scenery": 8,
+          "greenery": 8,
+          "water": 10,
+          "notability": 9
+        },
+        "waypoints": [
+          [
+            43.11,
+            -79.062
+          ],
+          [
+            43.1207,
+            -79.057
+          ],
+          [
+            43.137,
+            -79.046
+          ],
+          [
+            43.1571,
+            -79.043
+          ],
+          [
+            43.1999,
+            -79.044
+          ],
+          [
+            43.248,
+            -79.056
+          ],
+          [
+            43.2613,
+            -79.0558
+          ]
+        ],
+        "stops": [
+          {
+            "lat": 43.1203,
+            "lon": -79.064,
+            "title": "Whirlpool State Park Rim Overlook",
+            "blurb": "Park at the Whirlpool State Park lot and walk to the rim wall: 300 feet below, the Niagara River doubles back on itself in the green-and-white churn of the Whirlpool. Up-gorge to the south you can pick out the Canadian Aero Car cable crossing, and late light rakes across the layered dolostone cliffs.",
+            "kind": "overlook",
+            "heading": 250,
+            "source": "Whirlpool State Park"
+          },
+          {
+            "lat": 43.13476,
+            "lon": -79.04629,
+            "title": "Devil's Hole State Park Gorge View",
+            "blurb": "From the Robert Moses Pkwy pull-off into Devil's Hole, look down into the most violent stretch of the Niagara Gorge - the Whirlpool Rapids thundering between sheer 300-foot dolostone cliffs, framed by the forest canopy that crowds the rim.",
+            "kind": "gorge",
+            "heading": 230,
+            "source": "Devil's Hole State Park"
+          },
+          {
+            "lat": 43.1433,
+            "lon": -79.0405,
+            "title": "Niagara Power Vista",
+            "blurb": "Pull in at the NY Power Authority's Power Vista observation deck at 5777 Lewiston Rd, perched on the escarpment 350 feet above the river. The deck looks north down the lower Niagara toward Lewiston, with the Robert Moses generating complex and forebay below catching the evening sun.",
+            "kind": "viewpoint",
+            "heading": 345,
+            "source": "Niagara Power Vista"
+          },
+          {
+            "lat": 43.1645,
+            "lon": -79.0445,
+            "title": "Artpark Bluff over the Lower River",
+            "blurb": "At Earl W. Brydges Artpark State Park the amphitheater bluff opens onto the wide, calm lower Niagara as it emerges from the gorge - the Lewiston-Queenston bridge arcing across the river just to the north and the Canadian escarpment glowing at sunset across the water.",
+            "kind": "overlook",
+            "heading": 300,
+            "source": "Artpark State Park"
+          },
+          {
+            "lat": 43.19988,
+            "lon": -79.04396,
+            "title": "Stella Niagara Preserve Riverbank",
+            "blurb": "A quiet roadside stop on Lower River Road at the Stella Niagara Preserve, where meadows roll down toward the riverbank. Walk the short preserve path to the bank for open western water views and the sun dropping behind the Ontario shore.",
+            "kind": "water",
+            "heading": 270,
+            "source": "Stella Niagara Preserve"
+          },
+          {
+            "lat": 43.26133,
+            "lon": -79.05575,
+            "title": "Fort Niagara River-Mouth Finale",
+            "blurb": "Ride out to Fort Niagara State Park where the Niagara River finally spills into Lake Ontario. The old French fort sits on the point with an unbroken western horizon - the classic spot to watch the sun sink into the lake.",
+            "kind": "viewpoint",
+            "heading": 280,
+            "source": "Fort Niagara State Park"
+          }
+        ]
+      },
+      "judgeScore": 77,
+      "whyRide": "Hug the US rim of the Niagara Gorge past the Whirlpool and Devil's Hole, then drop to Lower River Road and chase the sun out to Old Fort Niagara where the river pours into Lake Ontario.",
+      "repairNotes": "Applied every valid judge fix. (1) FATAL START FIXED: moved WP[0] from 43.0931,-79.0628 (Schoellkopf ruins on the demolished/decommissioned Robert Moses Recreation Trail, pedestrian/bike only since the 2020 removal of the Main St-to-Findlay Dr segment) north to 43.110,-79.062, a confirmed-open parkway approach just south of Whirlpool SP near Whirlpool St - all three judges flagged this. (2) WP[2] moved from 43.137,-79.0395 (Vincentian Drive, off-corridor residential street) west to 43.137,-79.046 onto the parkway/NY-104 corridor (Judge 1). (3) Stop #4 Artpark de-fabricated: was at 43.15706,-79.03994, which reverse-geocodes to ~465 Fort Gray Dr near the Power Vista, ~0.8-1.2 km SE of the real Artpark, where the Lewiston-Queenston bridge does NOT arc overhead (all three judges). Relocated to the real Earl W. Brydges Artpark river-bluff/amphitheater overlook at 43.1645,-79.0445, heading 300, and rewrote the blurb so the bridge claim is now true (bridge is just north). (4) Stop #1 Whirlpool nudged from 43.12076,-79.05811 (Old Growth Woods trail parking, east of the named overlook) to the named SP rim overlook at 43.1203,-79.0640, heading 250; corrected the Aero Car detail (it is the Canadian attraction seen up-gorge to the south, not strung across at this point). (5) Stop #3 Power Vista moved from 43.13977,-79.04025 (~250-370 m south, down in the forebay zone) to the actual 5777 Lewiston Rd observation deck at 43.1433,-79.0405; fixed heading from the wrong 320 to 345 (N, down-river toward Lewiston) and rewrote the blurb to describe the escarpment-top paid visitor center rather than a roadside parkway pull-off. Stops #2 Devil's Hole, #5 Stella Niagara (softened the 'herons in the shallows' roadside inflation - bank views require a short preserve walk), and #6 Fort Niagara kept as verified-good. RUBRIC honesty: water 10 (confirmed honest by all), curvature deflated 5->4 (judges agree 5 is generous-to-wrong; parkway is sweeping, 18F bends gentle, a cruiser not a carver), scenery trimmed 9->8 (Artpark is now genuinely delivered but Stella's water-view framing is mild inflation), greenery 8 and notability 9 retained as defensible/earned now that Artpark is real and the corridor is confirmed drivable. Corridor is real, scenic, and ridable end-to-end, so viable=true."
+    },
+    {
+      "route": {
+        "id": "lake-ontario-seaway-trail-wilson-to-thirty-mile",
+        "name": "Seaway Trail: Wilson Harbor to Thirty Mile Point",
+        "theme": "Open-horizon lakeshore cruiser",
+        "region": "Lake Ontario Shore, Niagara/Orleans County, Western NY",
+        "summary": "An easygoing west-to-east run along NY-18, the Great Lakes Seaway Trail National Scenic Byway, from the wooded Wilson-Tuscarora State Park peninsula on Tuscarora Bay, through Olcott's working fishing harbor at the Eighteenmile Creek mouth, out to the 1875 Thirty Mile Point Lighthouse in Golden Hill State Park. This is honestly a long-sweeper cruiser, not a carver: NY-18 runs near-straight across the Lake Ontario farm plain, set back from the actual shore behind trees and houses for long stretches, with open water and big-sky horizons opening up mainly at the park spurs, creek mouths, and the harbor. Ride it for the relaxed pace and the lighthouse payoff, not for twisties.",
+        "rubric": {
+          "curvature": 3,
+          "scenery": 6,
+          "greenery": 5,
+          "water": 8,
+          "notability": 7
+        },
+        "waypoints": [
+          [
+            43.3054,
+            -78.85163
+          ],
+          [
+            43.3109,
+            -78.8264
+          ],
+          [
+            43.3151,
+            -78.7447
+          ],
+          [
+            43.3362,
+            -78.717
+          ],
+          [
+            43.3315,
+            -78.662
+          ],
+          [
+            43.3456,
+            -78.556
+          ],
+          [
+            43.369,
+            -78.484
+          ]
+        ],
+        "stops": [
+          {
+            "lat": 43.3054,
+            "lon": -78.85163,
+            "title": "Wilson-Tuscarora State Park",
+            "blurb": "Start under the hardwood canopy on the Tuscarora Bay peninsula. The park road curls past the boat launch where the East Branch of Twelvemile Creek opens into the sheltered bay before it reaches the open lake.",
+            "kind": "forest",
+            "heading": 20,
+            "source": "Wilson-Tuscarora State Park"
+          },
+          {
+            "lat": 43.3135,
+            "lon": -78.849,
+            "title": "Tuscarora Bay",
+            "blurb": "Pull off on the park marina and boat-launch road on the bay side. Look north across the reed-lined inlet and the bay mouth, where the flat open-lake horizon stretches to the skyline behind the moored small craft.",
+            "kind": "water",
+            "heading": 0,
+            "source": "Wilson-Tuscarora State Park marina"
+          },
+          {
+            "lat": 43.33753,
+            "lon": -78.71632,
+            "title": "Olcott Harbor",
+            "blurb": "The working fishing harbor at the mouth of Eighteenmile Creek: charter boats, the green pier light, and breakwalls framing the open lake. A classic water-level Seaway Trail stop on the Krull Park waterfront with the water filling the view straight ahead.",
+            "kind": "water",
+            "heading": 0,
+            "source": "Olcott Harbor"
+          },
+          {
+            "lat": 43.3743,
+            "lon": -78.4849,
+            "title": "Golden Hill State Park",
+            "blurb": "Roll onto the park lawn just east of the lighthouse, big maples overhead and the bluff dropping to the open lake. Look northwest and the squared limestone tower stands just ahead against the water.",
+            "kind": "overlook",
+            "heading": 320,
+            "source": "Golden Hill State Park"
+          },
+          {
+            "lat": 43.37491,
+            "lon": -78.48608,
+            "title": "Thirty Mile Point Lighthouse",
+            "blurb": "The route's payoff: the squared 1875 limestone tower and keeper's house standing over the bluff, the open lake horizon behind it. Park beside the drive and frame the tower against the water.",
+            "kind": "viewpoint",
+            "heading": 300,
+            "source": "Thirty Mile Point Light"
+          }
+        ]
+      },
+      "judgeScore": 76,
+      "whyRide": "Big-sky Lake Ontario cruise down the Seaway Trail on NY-18, from a wooded bay through a working fishing harbor to an 1875 limestone lighthouse you can walk up to on the bluff.",
+      "repairNotes": "Applied every valid judge fix. (1) Tuscarora Bay stop was OFF-ROAD in open water (all three judges flagged it, no road/no Street View) - relocated onto the Wilson-Tuscarora park marina/boat-launch road at 43.3135,-78.849, heading 0 north over the bay, where Street View exists and the reed-lined-inlet + open-lake view still holds; rewrote the blurb to match the real parkable spot. (2) Golden Hill stop was tagged kind 'village' (wrong - it's a state park) and its coordinate sat ~650m east of the lighthouse so the old blurb 'lighthouse grounds just ahead' + heading 350 pointed the wrong way; moved to Judge 2's corrected 43.3743,-78.4849 (~120m ESE of the tower on park lawn), changed kind to 'overlook' (bluff over the lake), set heading 320 NW toward the tower + water, and rewrote the blurb so the tower really is ahead. (3) Olcott stop was mislabeled 'overlook' but it is a water-level harbor pier, not an elevated overlook - changed kind to 'water' and retitled 'Olcott Harbor'. (4) Rubric deflated for honesty per Judge 2: water 9 -> 8 (NY-18 is set back from the shore behind trees/houses for long stretches, open water not continuously in view) and greenery 6 -> 5 (the middle is open agricultural plain, not woods - greenery is real only at the two bracketing state parks). Curvature kept at 3 (all judges call it honest and un-inflated). Summary updated to disclose the set-back/farm-plain reality. Four anchors verified accurate and unchanged in coordinate: Wilson-Tuscarora start, Olcott, and Thirty Mile Point Light (matches official 43.37491/-78.48595 to ~10m). Kept 5 good stops; route is real, scenic, and ridable, so viable=true."
+    },
+    {
+      "route": {
+        "id": "letchworth-gorge-rim-carver",
+        "name": "Letchworth Gorge Rim Carver",
+        "theme": "Shaded gorge-rim canyon cruiser",
+        "region": "Letchworth State Park / Genesee River Gorge, Portageville WNY",
+        "summary": "A tree-shaded run up the Park Road along the WEST rim of the Genesee River gorge — the \"Grand Canyon of the East\" — linking the Upper/Middle Falls cluster near Portageville with a chain of signed, drive-up gorge overlooks (Inspiration Point, Lower Falls area, Great Bend, Tea Table), then continuing north along Park Road and out to the Mt. Morris Dam Overlook at the canyon's lower end. Sweeping bends, steady grade changes, and 500+ ft drop-offs to the river. Note: Park Road and the Portageville end are subject to seasonal closures (typically late fall through spring) — verify before riding.",
+        "rubric": {
+          "curvature": 6,
+          "scenery": 10,
+          "greenery": 9,
+          "water": 9,
+          "notability": 9
+        },
+        "waypoints": [
+          [
+            42.5778,
+            -78.049
+          ],
+          [
+            42.5855,
+            -78.0455
+          ],
+          [
+            42.587,
+            -78.044
+          ],
+          [
+            42.5905,
+            -78.0385
+          ],
+          [
+            42.603,
+            -78.033
+          ],
+          [
+            42.6126,
+            -78.027
+          ],
+          [
+            42.617,
+            -78.003
+          ],
+          [
+            42.73189,
+            -77.91558
+          ]
+        ],
+        "stops": [
+          {
+            "lat": 42.5855,
+            "lon": -78.0455,
+            "title": "Middle Falls Overlook",
+            "blurb": "Pull off on the west-rim Park Road for the park's most famous view: the broad, 107-ft Middle Falls thundering over a rock shelf, framed by gorge walls and the Glen Iris terrace. Best in high water, when spray drifts up toward the railing.",
+            "kind": "waterfall",
+            "heading": 210,
+            "source": "Letchworth Middle Falls roadside overlook"
+          },
+          {
+            "lat": 42.587,
+            "lon": -78.044,
+            "title": "Inspiration Point",
+            "blurb": "The classic roadside overlook — one sweeping frame catching the Middle and Upper Falls stepping down the gorge with the high railway trestle above the river. The signature Letchworth photo, straight from a paved pull-off.",
+            "kind": "overlook",
+            "heading": 200,
+            "source": "Inspiration Point pull-off, Park Road"
+          },
+          {
+            "lat": 42.5905,
+            "lon": -78.0385,
+            "title": "Lower Falls Area Pull-off",
+            "blurb": "Roadside stop near the Lower Falls parking area off the Park Road, with a wooded down-gorge view where the canyon narrows and the Genesee runs green between shale-and-sandstone walls. (The footbridge itself is a stairs-only hike below — this is the drive-up view.)",
+            "kind": "viewpoint",
+            "heading": 120,
+            "source": "Lower Falls parking area, Park Road"
+          },
+          {
+            "lat": 42.603,
+            "lon": -78.033,
+            "title": "Great Bend Overlook",
+            "blurb": "Park at the rim just north of Denton Corners Rd where the Genesee swings through a tight horseshoe far below; you stand on the lip of the deepest part of the gorge looking down ~550 ft to the river curling through forest.",
+            "kind": "gorge",
+            "heading": 110,
+            "source": "Great Bend Overlook, Park Road"
+          },
+          {
+            "lat": 42.6126,
+            "lon": -78.027,
+            "title": "Tea Table Overlook",
+            "blurb": "A quieter roadside picnic pull-off with a wide panorama into the wooded gorge — layered shale cliffs and the river threading between them, with fewer crowds than the falls end.",
+            "kind": "viewpoint",
+            "heading": 110,
+            "source": "Tea Table picnic/overlook pull-off, Park Road"
+          },
+          {
+            "lat": 42.73189,
+            "lon": -77.91558,
+            "title": "Mt. Morris Dam Overlook",
+            "blurb": "The northern finale at the Mt. Morris Dam Overlook: from the parking area you look southeast and down-gorge over the broad lower canyon and the dam pool, the wide-open payoff after the run along the rim. (The dam itself is just north of where you stand.)",
+            "kind": "overlook",
+            "heading": 120,
+            "source": "Mt. Morris Dam Overlook parking, Rte 408"
+          }
+        ]
+      },
+      "judgeScore": 76,
+      "whyRide": "Carve the shaded west rim of the \"Grand Canyon of the East\" — three thundering falls, then miles of signed gorge overlooks dropping 500+ ft to the Genesee, capped by the Mt. Morris Dam view.",
+      "repairNotes": "Applied the judges' consensus fixes. (1) STOPS PULLED WEST BACK ONTO THE PARK ROAD: Judges 1 and 3 agreed every stop was dragged east off the west-rim road and out over the gorge (no Street View). Middle Falls -> 42.5855,-78.0455; Inspiration Point -> 42.587,-78.044; Great Bend -> 42.603,-78.033 (documented overlook N of Denton Corners Rd); Tea Table -> 42.6126,-78.027. Headings kept facing E/SE into the gorge (or SW toward the falls). (2) LOWER FALLS FOOTBRIDGE FIXED: original 42.58563,-78.02029 was the stairs-only canyon-floor footbridge (no drive-up Street View). Replaced with a roadside Lower Falls parking-area pull-off at 42.5905,-78.0385, relabeled \"Lower Falls Area Pull-off\" with an honest blurb noting the footbridge is a foot-only hike below. (3) HOGSBACK RELOCATED + FINALE FIXED: judges disagreed (J2 said coords ok but heading wrong; J1 said ~2km off; J3 said fabricated/east-side). Took the safest verified option — relocated to the real Mt. Morris Dam Overlook parking at 42.73189,-77.91558 (Street View confirmed), renamed \"Mt. Morris Dam Overlook\", heading changed 200->120 to face SE down-gorge, and rewrote the self-contradicting blurb (dam is NORTH of the overlook, view is east/down-gorge — not \"south over the dam pool\"). (4) WAYPOINTS: rebuilt to keep the OSRM-snapped line on the Park Road centerline (longitudes ~-78.05 to -78.00) and added an intermediate waypoint at 42.617,-78.003 (Archery Field Overlook area) so the long northern leg to the dam follows the real road instead of one ~14-16 km straight segment. (5) RUBRIC DEFLATED: all three judges flagged curvature 8 as inflated — Park Road is moderate-speed sweepers with grade changes, not a tight switchback carver — lowered to 6. Water 10->9 since the original 10s partly rested on a mislocated falls/footbridge stop. Scenery 10, greenery 9, notability 9 (Q1303662) retained as defensible. Theme softened from \"canyon carver\" to \"canyon cruiser\" to stop overselling twistiness; name/id/region kept. Added seasonal-closure caveat to the summary per Judge 2."
+    },
+    {
+      "route": {
+        "id": "east-aurora-holland-vermont-hill-ridge",
+        "name": "Holland Valley & Vermont Hill Ridge Carver",
+        "theme": "High-farm ridge sweeper",
+        "region": "East Aurora & Holland Hills, Erie County, Western NY",
+        "summary": "A low-traffic horse-country-to-ridge climb: from the Knox Farm State Park frontage on the south edge of East Aurora, the route works southeast across the Colden / upper Cazenovia uplands on Blanchard Road and North Canada Street, then makes the real prize climb up Vermont Hill Road to the 488 m roof of the Holland hills for big farm-and-forest skylines. It runs the open ridge south on South Main Street and finishes at the Erie County Forest access on Genesee Road near the county high ground. Note: despite earlier framing, this is NOT a NY-16 valley-floor run through Holland and Chaffee village - the corridor tracks the hill-farm side roads 5-9 km west of NY-16 and tops out honestly at the 488 m Vermont Hill summit (the higher 500-591 m peaks are skyline-only, never crossed by the road).",
+        "rubric": {
+          "curvature": 6,
+          "scenery": 6,
+          "greenery": 8,
+          "water": 3,
+          "notability": 3
+        },
+        "waypoints": [
+          [
+            42.7682,
+            -78.642
+          ],
+          [
+            42.7245,
+            -78.6135
+          ],
+          [
+            42.672,
+            -78.587
+          ],
+          [
+            42.6588,
+            -78.552
+          ],
+          [
+            42.6628,
+            -78.5292
+          ],
+          [
+            42.636,
+            -78.53
+          ],
+          [
+            42.5488,
+            -78.5719
+          ]
+        ],
+        "stops": [
+          {
+            "lat": 42.7682,
+            "lon": -78.642,
+            "title": "Knox Farm State Park (Knox Road frontage)",
+            "blurb": "Start at the public Knox Road frontage of Knox Farm State Park on the south edge of East Aurora - rolling former Knox-estate horse pastures and oak tree lines behind the fence. Park on the road shoulder here; the interior loop is foot/horse only, so the ride begins at the gate.",
+            "kind": "viewpoint",
+            "heading": 180,
+            "source": "Knox Farm State Park (Q6423559)"
+          },
+          {
+            "lat": 42.672,
+            "lon": -78.587,
+            "title": "Blanchard Road Climb (Colden)",
+            "blurb": "Blanchard Road ramps up out of the upper Cazenovia Creek valley in Colden toward the ridge - look back up the valley as the farmed Colden/Wales uplands stack up behind you. This is hill-farm side-road country, not the NY-16 valley floor (which runs several km east).",
+            "kind": "viewpoint",
+            "heading": 210,
+            "source": "Blanchard Road"
+          },
+          {
+            "lat": 42.6628,
+            "lon": -78.5292,
+            "title": "Vermont Hill Crest",
+            "blurb": "The payoff: topping out at the 488 m Vermont Hill summit on Vermont Hill Road - hilltop dairy farms, big open sky and woodlots rolling away in every direction, with the 500 m Crow Hill bump on the eastern skyline. This is the honest high point of the ride.",
+            "kind": "overlook",
+            "heading": 90,
+            "source": "Vermont Hill (Q34817382)"
+          },
+          {
+            "lat": 42.5488,
+            "lon": -78.5719,
+            "title": "Erie County Forest (Genesee Road)",
+            "blurb": "Finish at the Erie County Bureau of Forestry access on Genesee Road (11372 Genesee Rd) - free roadside pull-offs at the edge of a 3,400-acre hardwood reforestation area near the county high ground. Dense mature canopy giving way to patchwork ridge-top fields; a quiet shaded close to the ride.",
+            "kind": "forest",
+            "heading": 180,
+            "source": "Erie County Forest"
+          }
+        ]
+      },
+      "judgeScore": 70,
+      "whyRide": "Empty horse-country roads climb Vermont Hill Road to the 488 m roof of the Holland hills - big-sky dairy-and-hardwood ridge with almost zero traffic.",
+      "repairNotes": "Moved WP1 + Knox Farm stop OFF the non-motorized interior Outer Loop (original 42.7738,-78.6494 OSRM-snapped 366 m into the park) to the public Knox Road frontage at 42.7682,-78.6420 (snaps 25 m to Knox Road, Street View exists, legal to stop); also fixed its kind from 'village' to 'viewpoint' (it is a state park, not a village). DROPPED the fabricated 'Blanchard Hill Overlook' stop: it was dropped exactly on the Blanchard Hill peak (42.6387,-78.6634) 7+ km west of every waypoint, snaps to Frantz Road (not Blanchard Rd), and had no connecting waypoint. Relocated the southern terminus + stop from the poorly-snapping Allen Road point (42.5762,-78.539 snapped 489 m off, and was mislabeled 'Sardinia Benchmark' though the real benchmark node is ~2 km west) to the documented Erie County Forest access on Genesee Road (42.5488,-78.5719, snaps 4 m; verified public address 11372 Genesee Rd with signed free parking) and relabeled it honestly as a forest stop, not the benchmark. Rewrote the 'Holland Valley Climb' stop as 'Blanchard Road Climb (Colden)' with corrected heading 210 - it is on Blanchard Road in Colden/upper Cazenovia, NOT on/near NY-16. Kept Vermont Hill Crest exactly (wikidata Q34817382, dead-on, on Vermont Hill Road). Rewrote the summary to stop claiming a NY-16/Holland/Chaffee valley run it does not follow and to cap the honest ceiling at 488 m Vermont Hill (removed reliance on the unverified/off-corridor South Hill 540 m and the skyline-only Crow Hill claims). Deflated the rubric to the judges' honest consensus: curvature 7->6 (only Vermont Hill Rd is truly twisty, no switchbacks; rest is rolling grade), water 4->3 (ridge is dry, lakes off-corridor), notability 4->3 (only Knox Farm + Vermont Hill are verifiable anchors, rest are obscure bumps). Full corrected 7-waypoint chain OSRM-routes end to end (code Ok, ~54 km / 78 min) with every waypoint snapping to a real drivable public road."
+    },
+    {
+      "route": {
+        "id": "ischua-valley-rock-city-ridge-carver",
+        "name": "Griffis Ridge & McCarty Hill Carver",
+        "theme": "Forested Cattaraugus ridge carvers into the Griffis sculpture hills",
+        "region": "Allegany Foothills — Cattaraugus County, Western NY",
+        "summary": "A tight ~23 km ridge carve in the Cattaraugus highlands east of Ellicottville. From the NY-242/US-219 junction in Ellicottville the road climbs northeast on NY-242 and Horn Hill Road up through the beech-maple canopy of McCarty Hill State Forest (McCarty Hill peak 710 m just south), then drops onto Plato Road and the East Otto backroads to reach Griffis Sculpture Park, where rusted-steel giants stand in roadside hilltop fields. It finishes on Mill Valley Road and Rohr Hill Road past the two Griffis sites. This is the genuinely ridable, genuinely scenic western half of the original corridor — the disconnected NY-16/Ischua valley and Harwood Lake leg (24-26 km east, reached by gravel) has been dropped, along with three off-road/centroid stops, leaving one coherent forested ridge ride anchored on a marquee attraction.",
+        "rubric": {
+          "curvature": 7,
+          "scenery": 6,
+          "greenery": 8,
+          "water": 2,
+          "notability": 5
+        },
+        "waypoints": [
+          [
+            42.2744,
+            -78.6781
+          ],
+          [
+            42.2849,
+            -78.6591
+          ],
+          [
+            42.2894,
+            -78.6477
+          ],
+          [
+            42.304,
+            -78.6296
+          ],
+          [
+            42.311,
+            -78.6225
+          ],
+          [
+            42.354,
+            -78.6764
+          ],
+          [
+            42.3685,
+            -78.68
+          ],
+          [
+            42.3812,
+            -78.678
+          ]
+        ],
+        "stops": [
+          {
+            "lat": 42.2894,
+            "lon": -78.6477,
+            "title": "McCarty Hill State Forest Ridge (NY-242)",
+            "blurb": "Where NY-242 and Horn Hill Road climb northeast into McCarty Hill State Forest, the twistiest, most tree-walled stretch of the ride. Deep beech-maple canopy crowds both sides of the pavement, with McCarty Hill (710 m) rising just to the south. Pull off on the paved shoulder and shoot up the climb.",
+            "kind": "forest",
+            "heading": 60,
+            "source": "McCarty Hill State Forest (route re-anchored from forest centroid onto the NY-242/Horn Hill Rd ridge crossing)"
+          },
+          {
+            "lat": 42.36845,
+            "lon": -78.69299,
+            "title": "Griffis Sculpture Park — Mill Valley Road",
+            "blurb": "The main Mill Valley Road site (6902 Mill Valley Rd), oldest sculpture park in the US. Park at the roadside entrance and look west across the meadow at the towering rusted-steel figures rising out of the hardwood-ringed field. A real, paid, mapped attraction with roadside Street View.",
+            "kind": "viewpoint",
+            "heading": 270,
+            "source": "Griffis Sculpture Park: Mill Valley Road site (OSM tourism=attraction; en.wikipedia.org/wiki/Griffis_Sculpture_Park)"
+          },
+          {
+            "lat": 42.3812,
+            "lon": -78.678,
+            "title": "Griffis Sculpture Park — Rohr Hill Road",
+            "blurb": "Rohr Hill Road threads past Griffis's open hilltop fields where massive abstract figures stand right at the roadside, foothills rolling away behind them. The northern, more exposed half of the park — sculptures set in fields and woods just off the pavement, visible from the road.",
+            "kind": "viewpoint",
+            "heading": 270,
+            "source": "Griffis Sculpture Park: Rohr Hill site (OSM tourism=attraction; corrected from fabricated 42.38717,-78.6824 onto Rohr Hill Rd)"
+          }
+        ]
+      },
+      "judgeScore": 66,
+      "whyRide": "Ellicottville's NY-242 tree-tunnel climb through McCarty Hill State Forest, dropping into the rust giants of Griffis Sculpture Park — one tight, honest 23 km ridge carve, not a stapled-together zigzag.",
+      "repairNotes": "All three judges agreed (44/44/38, all scenicReal=false) on the same defects; I applied every valid fix.\n\nCORRIDOR SPLIT (unanimous): The original was two disconnected halves ~24-26 km apart — the NY-16 Ischua valley/Harwood Lake leg (east, ~-78.38) and the Ellicottville/Griffis ridge cluster (west, ~-78.69), stitched with a backtracking waypoint chain (WP2 Machias -> WP3 SE -> WP4 16 km SW...). NY-242 does NOT connect them. I kept the western ridge half (the salvageable, genuinely scenic, twisty cluster with the only real stops) and DROPPED the entire eastern leg.\n\nWAYPOINTS: Replaced the 7-point zigzag with 8 monotonic NE waypoints, all OSRM-snapped within 9 m of named real roads (Elizabeth St/US-219, NY-242, Horn Hill Rd, Plato Rd, Mill Valley Rd/CR-75, Rohr Hill Rd). Verified geometry from OSM way data before placing. Result: a coherent 23.3 km / 31 min single ride (was an incoherent ~67 km straight-line zigzag), measured curvature density 2.03 (pipeline curve x4 = 8.1, confirming the ridge genuinely twists once the straight valley leg is gone).\n\nSTOPS — dropped 3, fixed/kept 3:\n- DROPPED Harwood Lake: off-corridor (26 km east), gravel MUA access, natural=water polygon centroid sitting mid-lake, no Street View (all 3 judges).\n- DROPPED Rainbow Lake \"Overlook\": private resort lake (Allegany Mountain Resort), no public DEC overlook exists, water centroid mid-lake, \"overlook\" was fabricated (judges 1 & 2).\n- DROPPED Bear Creek State Forest Crossing: nature_reserve polygon centroid, trackless woods/gravel, generic blurb, no Street View (all 3 judges).\n- RE-ANCHORED \"Rock City/McCarty Hill Highlands\": moved off the forest centroid (42.24631,-78.69092) onto the NY-242/Horn Hill Rd ridge crossing inside McCarty Hill SF (42.2894,-78.6477, snaps 1 m to a named road) per the judges' suggested ~42.256-78.684 / NY-242 ridge fix. Kept kind=forest honestly (tree-tunnel, not a panoramic overlook).\n- FIXED Griffis Rohr Hill: original 42.38717,-78.6824 was 2.2 km off in field/forest. Re-anchored onto Rohr Hill Road at 42.3812,-78.6780 (5 m to road) where the roadside sculptures actually stand.\n- ADDED Griffis Mill Valley Road site (42.36845,-78.69299, 0 m to Mill Valley Rd / 6902 address) — the marquee tourism=attraction with Wikipedia notability, the strongest verified Street-View stop. All judges said build AROUND the Griffis cluster.\n\nRUBRIC (honest, per deflation notes): curvature 8->7 (the combined-route '8 too high' complaint was driven by the straight NY-16 leg, now gone; this pure-ridge half measures ~8.1 but I report a conservative 7). scenery 6 kept (judges called it fairly scored). greenery 9->8 (judges: padded by nominally-touched forests; route genuinely runs McCarty Hill SF + Griffis hardwoods but is tighter now). water 6->2 (both lakes dropped, no on-route water feature — the original 6 leaned entirely on two centroid lakes). notability 5 kept and now defensible — anchored on Griffis Sculpture Park, which actually HAS a Wikipedia article, rather than wikidata-only peaks.\n\nRENAME: theme/name updated to honestly reflect the ridge-and-sculpture-park ride (the original 'creek-valley run' described the dropped NY-16 leg). id and region preserved.\n\nVIABLE=true: the western half is a real, coherent, scenic, ridable forested ridge carve with 3 verified Street-View stops including a marquee attraction. Score 66: solid honest regional ride, deflated from a marquee score by its short length (23 km), no water, and no gorge/panorama."
+    },
+    {
+      "route": {
+        "id": "ny240-colden-cazenovia-creek-carver",
+        "name": "NY-240 Colden Creek Tree-Tunnel Carver",
+        "theme": "Shaded creek-hugging valley cruise",
+        "region": "Colden / Concord, West Branch Cazenovia Creek corridor, Erie County WNY",
+        "summary": "A genuine creek-hugging cruise straight down NY-240 (State Road / Mill Street) through the West Branch Cazenovia Creek valley, from the Patchin/Colden gateway south through Colden hamlet toward Glenwood. The road shadows the creek the whole way, crossing it in the heart of Colden, under near-continuous hardwood canopy with the wooded valley walls rising on both sides. Honest version: no waterfall payoff (Eternal Flame Falls is a hiking-only gorge in the next watershed over and has been removed), just a steady, shaded, low-stress valley ride that actually follows the creek the way the name promises.",
+        "rubric": {
+          "curvature": 5,
+          "scenery": 5,
+          "greenery": 8,
+          "water": 6,
+          "notability": 4
+        },
+        "waypoints": [
+          [
+            42.7,
+            -78.6836
+          ],
+          [
+            42.689,
+            -78.6893
+          ],
+          [
+            42.6596,
+            -78.6831
+          ],
+          [
+            42.6537,
+            -78.6861
+          ],
+          [
+            42.6444,
+            -78.6849
+          ],
+          [
+            42.636,
+            -78.681
+          ],
+          [
+            42.6279,
+            -78.6694
+          ],
+          [
+            42.6202,
+            -78.6592
+          ]
+        ],
+        "stops": [
+          {
+            "lat": 42.6995,
+            "lon": -78.684,
+            "title": "NY-240 valley gateway near Patchin",
+            "blurb": "Drop into the West Branch Cazenovia Creek valley where NY-240 narrows and the canopy closes overhead; aim the camera south down the road as the wooded valley walls funnel you toward Colden.",
+            "kind": "village",
+            "heading": 200,
+            "source": "NY-240 centerline (OSM way 12285267)"
+          },
+          {
+            "lat": 42.6596,
+            "lon": -78.6831,
+            "title": "Eastern ridge roadside, NY-240",
+            "blurb": "A shaded straightaway where the hardwood-walled eastern ridge climbs west of the road; not a developed overlook, just a green tunnel of roadside woods with the valley wall above the creek flats. East Hill summit sits about 2 km off to the west, hidden behind the trees.",
+            "kind": "forest",
+            "heading": 254,
+            "source": "NY-240 centerline near East Hill (Q34914409)"
+          },
+          {
+            "lat": 42.6537,
+            "lon": -78.6861,
+            "title": "Colden hamlet, NY-240 / Mill Street",
+            "blurb": "Roll into Colden where NY-240 becomes Mill Street; the road runs right alongside the West Branch Cazenovia Creek with overhanging maples shading the pavement, the leafy core of the ride.",
+            "kind": "village",
+            "heading": 180,
+            "source": "NY-240 / West Branch Cazenovia Creek"
+          },
+          {
+            "lat": 42.6444,
+            "lon": -78.6849,
+            "title": "West Branch Cazenovia Creek crossing",
+            "blurb": "Here NY-240 bridges the West Branch Cazenovia Creek in the heart of Colden; aim upstream at the creek riffles framed by overhanging hardwoods - the genuine creek-hugging moment the route is named for.",
+            "kind": "water",
+            "heading": 161,
+            "source": "West Branch Cazenovia Creek (OSM way 113345178)"
+          },
+          {
+            "lat": 42.626,
+            "lon": -78.6645,
+            "title": "Lower valley toward Glenwood",
+            "blurb": "South of Colden NY-240 follows the creek flats down toward Glenwood, the canopy opening to rolling wooded relief; a relaxed down-valley run to close the ride.",
+            "kind": "forest",
+            "heading": 146,
+            "source": "NY-240 centerline (OSM way 286615138)"
+          }
+        ]
+      },
+      "judgeScore": 62,
+      "whyRide": "A real, shaded creek-hugging cruise down NY-240 through Colden that finally lives up to its name - just don't expect a waterfall.",
+      "repairNotes": "REDREW GEOMETRY (judge consensus path A): replaced the 7-waypoint zigzag - which OSRM-snapped onto Boston State Rd / back-roads east of the valley then cut NW into the Eighteenmile Creek watershed and never touched NY-240 - with 8 waypoints placed directly on the verified NY-240 centerline (OSM ways 12285267 / 286615138, \"State Road\"). Confirmed via OSRM: a single coherent road, 10.3 km / ~11 min, monotonic N->S down the West Branch Cazenovia Creek valley (code Ok, only 4 of 268 snapped points off the centerline lon band). This now genuinely hugs the creek, which OSM way 113345178 (West Branch Cazenovia Creek) crisscrosses the road from lat 42.640-42.661. DELETED 3 fabricated/off-corridor stops: Eternal Flame Falls and Pipeline Confluence (both in the Shale/Eighteenmile Creek gorge of Chestnut Ridge - wrong watershed, ~8 km west, foot-access-only 0.75 mi hike, no Street View at the coords), and Green Lake by Patchin (5.9 km off-route, orphaned). MOVED Colden crossing to the real NY-240 West Branch bridge (42.6444,-78.6849, verified road+creek coincide within ~3 m; matches judge 1). REPLACED the fabricated \"Boston Hills overlook toward East Hill\": East Hill peak (Q34914409) bears 254 deg WEST and is ~2 km off through forest with no vista, so I relabeled it an honest roadside-woods (forest) stop with the corrected westward heading rather than a fake overlook. Moved the Boston gateway onto the actual NY-240 alignment near Patchin (the original 42.6285,-78.737 sits ~5 km west of NY-240 on Boston State Rd). All 5 kept stops verified 1-8 m from the snapped route with Street View. DEFLATED RUBRIC to honest values per judge consensus (greenery 8, water 6, scenery 5, notability 4, curvature 5 - it is gentle valley bends, not hairpins; note the assemble pipeline will overwrite curvature with its OSRM-measured value regardless). Purged rubricEvidence fabrications (Cazenovia Creek WMA is 19 km north; Knox Farm State Park and the scattered 3+ km peaks are not visible relief). Score 62: a real, pretty, low-stress shaded creek ride, but modest - no marquee landmark and no rideable waterfall payoff now that the cross-watershed falls are correctly removed."
+    },
+    {
+      "route": {
+        "id": "cattaraugus-springville-ridge-zoar-carver",
+        "name": "Sardinia Ridges to East Otto Gorge Run",
+        "theme": "Rolling ridge-and-gorge carver",
+        "region": "Cattaraugus & Springville Hills, Western NY",
+        "summary": "A Southtowns backroad ride that climbs the farmland ridges around Sardinia and the Erie County Forest, traverses the plateau past a cluster of named 600m hills (Blue Hill, Bread Loaf Hill, Dutch Hill), then drops southwest on twisty, canopy-covered pavement into the East Otto State Forest. Big-sky ridge farmland up top; genuinely tight, tree-lined grades on the descent. Note: the named hills are wooded summits viewed FROM the road below them, not drive-up overlooks, and the route ends in upland forest at East Otto pointing toward (but not reaching) the Cattaraugus Creek / Zoar Valley gorge several miles farther west.",
+        "rubric": {
+          "curvature": 6,
+          "scenery": 5,
+          "greenery": 7,
+          "water": 3,
+          "notability": 4
+        },
+        "waypoints": [
+          [
+            42.5705,
+            -78.632
+          ],
+          [
+            42.552,
+            -78.576
+          ],
+          [
+            42.54,
+            -78.555
+          ],
+          [
+            42.506,
+            -78.533
+          ],
+          [
+            42.47,
+            -78.592
+          ],
+          [
+            42.452,
+            -78.676
+          ],
+          [
+            42.44,
+            -78.743
+          ],
+          [
+            42.438,
+            -78.79
+          ]
+        ],
+        "stops": [
+          {
+            "lat": 42.552,
+            "lon": -78.576,
+            "title": "Erie County Forest treeline",
+            "blurb": "Roadside framing where the route runs alongside the Erie County Forest parcel near Sardinia: a hardwood wall on one side and open ridge hayfields rolling away on the other. Classic Southtowns big-sky farmland edge, on pavement.",
+            "kind": "forest",
+            "heading": 150,
+            "source": "Erie County Forest"
+          },
+          {
+            "lat": 42.506,
+            "lon": -78.533,
+            "title": "Below Blue Hill (614m)",
+            "blurb": "On the road below the corridor's high ground. Blue Hill, the tallest named, wikidata-tagged peak in the bbox (now Blue Hill State Forest), rises about 450 m due south. Camera south up the wooded slope over patchwork fields - this is the view from pavement, not the summit.",
+            "kind": "viewpoint",
+            "heading": 180,
+            "source": "Blue Hill"
+          },
+          {
+            "lat": 42.47,
+            "lon": -78.592,
+            "title": "Below Bread Loaf Hill (593m)",
+            "blurb": "Open ridge road with the wooded cone of Bread Loaf Hill standing just to the south (its summit is only ~55 m off the road here). Long plateau sightlines in both directions; good late-afternoon light.",
+            "kind": "overlook",
+            "heading": 177,
+            "source": "Bread Loaf Hill"
+          },
+          {
+            "lat": 42.452,
+            "lon": -78.676,
+            "title": "Dutch Hill descent",
+            "blurb": "Where the pavement tips off the open plateau and starts to bend on the shoulder of Dutch Hill (548m), trading farmland for tree-lined grades. This is where the ride finally starts to carve toward the valley.",
+            "kind": "viewpoint",
+            "heading": 250,
+            "source": "Dutch Hill"
+          },
+          {
+            "lat": 42.438,
+            "lon": -78.79,
+            "title": "East Otto State Forest edge",
+            "blurb": "The shaded southwest terminus where the route meets the East Otto State Forest on the paved town road. Deep canopy and tight grades; the corridor points toward (but does not reach) the Cattaraugus Creek gorge of Zoar Valley, which lies several miles farther west with no through access from this side.",
+            "kind": "forest",
+            "heading": 230,
+            "source": "East Otto State Forest"
+          }
+        ]
+      },
+      "judgeScore": 58,
+      "whyRide": "Real 2,000-ft Southtowns ridge-and-hollow backroads from Sardinia toward East Otto, ending in a genuinely twisty, canopy-covered descent - honest ridge-from-the-road views, not drive-up summits.",
+      "repairNotes": "Verified every judge claim against scripts/data/scenic-raw.json and confirmed src/lib/scenicImagery.ts feeds raw stop lat/lon straight into Street View with NO road-snapping (only waypoints get OSRM-snapped), so off-road stops would return ZERO_RESULTS. FIXES APPLIED: (1) All five stops were sitting at 0 m from catalog POIs - three on literal peak summits, two on reserve centroids. Moved every stop onto its nearest routed waypoint so it snaps to a real public road with valid Street View. Stop 1 (was the ECF polygon centroid 42.55677,-78.5446, ~2 km off-line) -> 42.552,-78.576 on waypoint #2 beside the other ECF parcel. Stop 2 'Below Blue Hill' (was the 614m summit 42.50201,-78.53308) -> 42.506,-78.533, camera south at the hill. Stop 3 (was the Bread Loaf summit 42.46951,-78.59197) -> 42.47,-78.592; RETITLED 'Below Bread Loaf Hill' and DROPPED the false 'Burns Hill saddle' label (Burns Hill summit is ~5.3 km south, verified at 42.42229,-78.59586 - it was never a saddle). Stop 4 'Dutch Hill descent' (was the 548m summit 42.44784,-78.6753) -> 42.452,-78.676 on the descending grade. Stop 5 (was the East Otto centroid 42.43656,-78.79164 on seasonal-gravel Kriedeman Forest Rd) -> 42.438,-78.79 on the paved town road at the forest edge; retitled 'East Otto State Forest edge'. (2) PROSE: removed the false 'Lime Lake at the east end' claim (Lime Lake verified at 42.42771,-78.48084, ~9-10 km SE and off-corridor); removed 'Rainbow Lake nearby' (42.35215,-78.69681, ~10 km off); removed Townsend/South Hill 'framing the skyline' (both off the line of travel); downgraded the Zoar gorge language to 'points toward but does not reach' (Zoar Valley MUA verified at 42.4364,-78.86543, ~6 km west of the terminus with no through access from the Otto side). (3) RUBRIC deflated to honest values per the judges: scenery 6->5 (no developed viewpoints, wooded-summit views from pavement), water 6->3 (no on-road water; off-corridor lakes and unreached gorge removed as support), curvature 7->6 (only the SW descent truly carves), notability 5->4 (minor hill Q-ids; the famous Zoar draw never touches the route), greenery 8->7 (kept high but trimmed since parcels are partly tangential). Waypoints left intact - all three judges agreed they trace a coherent, broadly drivable rural plateau arc and OSRM snapping handles the rest. viable=true: the bones are real and the descent is genuinely scenic; score 58 reflects an honest, ridable regional backroad rather than a destination ride."
+    }
+  ]
+}
