@@ -6,16 +6,25 @@ import {
   streetViewDeepLink,
 } from './scenicImagery';
 
-// The test environment has no VITE_GOOGLE_MAPS_KEY, so this suite pins the keyless
-// fallback contract: signed-image builders return null, deep-links always work.
-describe('scenicImagery without a key', () => {
-  it('reports no key configured', () => {
-    expect(hasGoogleKey()).toBe(false);
+// The key may or may not be present depending on the environment (.env.local locally,
+// no key in CI's test step), so the key-dependent builders are tested against both states.
+describe('scenicImagery key-dependent builders', () => {
+  it('returns a signed URL when a key is configured, else null', () => {
+    const sv = streetViewStaticUrl(42.5, -78.9, 180);
+    const sat = staticRouteSatelliteUrl([[42.5, -78.9], [42.6, -78.8]]);
+    if (hasGoogleKey()) {
+      expect(sv).toContain('maps/api/streetview');
+      expect(sv).toContain('key=');
+      expect(sat).toContain('maps/api/staticmap');
+    } else {
+      expect(sv).toBeNull();
+      expect(sat).toBeNull();
+    }
   });
 
-  it('returns null for Street View Static and satellite builders (no key)', () => {
-    expect(streetViewStaticUrl(42.5, -78.9, 180)).toBeNull();
-    expect(staticRouteSatelliteUrl([[42.5, -78.9], [42.6, -78.8]])).toBeNull();
+  it('returns null for non-finite coordinates regardless of key', () => {
+    expect(streetViewStaticUrl(NaN, -78.9, 180)).toBeNull();
+    expect(staticRouteSatelliteUrl([[NaN, NaN]])).toBeNull();
   });
 });
 

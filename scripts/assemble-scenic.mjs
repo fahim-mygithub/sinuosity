@@ -78,24 +78,34 @@ const tsLiteral = (v) => JSON.stringify(v);
   let i = 0;
   for (const entry of items) {
     const r = entry.route || entry;
-    const straightLine = pathLength(r.waypoints.map((w) => [w[0], w[1]]));
-    const snap = await osrmSnap(r.waypoints);
+    const wpLine = r.waypoints.map((w) => [w[0], w[1]]);
+    const stopLine = r.stops.map((s) => [s.lat, s.lon]);
 
-    // Reject absurd OSRM detours (e.g. a broken routable network forcing a cross-border
-    // loop): if the snapped distance balloons past 2.2x the straight-line waypoint path,
-    // fall back to the coarse waypoint polyline, which is geometrically honest.
-    const detour = snap && snap.km > Math.max(8, straightLine * 2.2);
-    let coords, km, time, note;
-    if (snap && snap.coords.length >= 4 && !detour) {
-      coords = downsample(snap.coords, 150);
-      km = snap.km;
-      time = drivingTime(snap.sec);
+    // A snap is trustworthy only if OSRM didn't balloon the distance (a broken routable
+    // network can force an absurd cross-border detour). Try the waypoints first; if that
+    // detours, route through the road-snapped STOPS (guaranteed on drivable roads), which
+    // also makes the drawn line pass through every numbered pin.
+    const isDetour = (snap, ref) => !snap || snap.coords.length < 4 || snap.km > Math.max(8, pathLength(ref) * 2.3);
+    let chosen = null, via = '';
+    const wpSnap = await osrmSnap(r.waypoints);
+    if (!isDetour(wpSnap, wpLine)) { chosen = wpSnap; via = 'waypoints'; }
+    else if (stopLine.length >= 2) {
+      const stopSnap = await osrmSnap(stopLine);
+      if (!isDetour(stopSnap, stopLine)) { chosen = stopSnap; via = 'stops'; }
+    }
+
+    let coords, km, time;
+    if (chosen) {
+      coords = downsample(chosen.coords, 150);
+      km = chosen.km;
+      time = drivingTime(chosen.sec);
+      if (via === 'stops') console.warn(`  [${r.id}] waypoint route detoured — used road-snapped STOPS instead`);
     } else {
+      const straightLine = pathLength(wpLine);
       coords = r.waypoints.map((w) => [+w[0].toFixed(5), +w[1].toFixed(5)]);
       km = straightLine;
-      time = `~${Math.round((straightLine / 50) * 60)} min`; // ~50 km/h backroad estimate
-      note = snap ? `OSRM detour ${snap.km.toFixed(0)}km rejected (straight-line ${straightLine.toFixed(0)}km) — using waypoint polyline` : 'OSRM snap failed — using waypoint polyline';
-      console.warn(`  [${r.id}] ${note}`);
+      time = `~${Math.round((straightLine / 50) * 60)} min`;
+      console.warn(`  [${r.id}] OSRM unusable for waypoints AND stops — using coarse waypoint polyline`);
     }
 
     out.push({
@@ -119,7 +129,7 @@ const tsLiteral = (v) => JSON.stringify(v);
         kind: s.kind, heading: s.heading, ...(s.source ? { source: s.source } : {}),
       })),
     });
-    console.log(`  [${r.id}] ${out[out.length - 1].distanceKm}km, ${coords.length} pts, curve ${r.rubric.curvature}, score ${out[out.length - 1].score}${detour ? ' [waypoint-fallback]' : ''}`);
+    console.log(`  [${r.id}] ${out[out.length - 1].distanceKm}km, ${coords.length} pts, curve ${r.rubric.curvature}, score ${out[out.length - 1].score}${via ? ' [via ' + via + ']' : ' [waypoint-fallback]'}`);
     i++;
     await sleep(1200);
   }
