@@ -15,7 +15,8 @@
     "scenic:snap": "node scripts/snap-streetview.mjs",
     "scenic:assemble": "node scripts/assemble-scenic.mjs",
     "scenic:recurate": "node scripts/recurate-scenic.mjs",
-    "scenic:verify": "node scripts/verify-roads.mjs"
+    "scenic:verify": "node scripts/verify-roads.mjs",
+    "curated:build": "node scripts/curate-routes.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

@@ -1,44 +1,5 @@
 import type { LatLng } from '../lib/geometry';
 
-export interface Weights {
-  sinuosity: number;
-  scenery: number;
-  community: number;
-}
-
-export interface Pin {
-  lat: number;
-  lon: number;
-  type: 'lookout' | 'caution' | 'scenic';
-  title: string;
-  desc: string;
-}
-
-export interface Route {
-  id: string;
-  name: string;
-  type: string;
-  highlights: string;
-  /** Measured-ish curvature proxy, 0-10. */
-  sinuosity: number;
-  /** AUTHOR ESTIMATE, not measured. */
-  scenery: number;
-  /** AUTHOR ESTIMATE, percent. */
-  canopy: number;
-  /** AUTHOR ESTIMATE description. */
-  waterProximity: string;
-  /** AUTHOR ESTIMATE, 0-10. */
-  community: number;
-  /** Paraphrased rider sentiment — not a verbatim quote. */
-  communityIntel: string;
-  note: string;
-  color: string;
-  coords: LatLng[];
-  pins?: Pin[];
-}
-
-export type ScoredRoute = Route & { score: number };
-
 export interface ScannedRoad {
   id: string;
   name: string;

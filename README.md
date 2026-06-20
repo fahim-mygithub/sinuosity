@@ -1,8 +1,9 @@
 # Sinuosity — WNY Scenic Ride Finder
 
-Finds twisty, **scenic** backroads near Williamsville (36 Char Del Way), previews the
-photo-worthy stops with Google imagery, and hands the route off to Google/Apple Maps for
-navigation. Three modes:
+Finds twisty, **scenic** backroads across Western NY, previews the photo-worthy stops with
+Google imagery, and hands the route off to Google/Apple Maps for navigation. Scout from any
+address — the location is a first-class input (geocoded search + "use my location"), with an
+optional saved default home. Three modes:
 
 - **Scenic** (default) — a slate of rides from a *build-time pipeline*: candidate corridors
   are **discovered** by ranking WNY's paved through-roads on measured curvature (not a hand
@@ -13,16 +14,18 @@ navigation. Three modes:
   (curvature-heavy) — not an opaque model score. Each ride previews a satellite hero with the
   route traced and stops numbered, a score breakdown, and a reviewable list of scenic stops
   with Street View thumbnails.
-- **Curated** — hand-picked roads ranked by your twistiness/scenery/buzz weights.
-- **Live scan** — real-time OSM curvature scan around home (hardened: multi-mirror retry,
-  client timeout, distinct error states).
+- **Curated** — the hand-picked editorial classics, built to the **same standard as Scenic**:
+  OSRM-snapped geometry, measured curvature, a composite score, and a full review page with a
+  satellite hero and Street-View-anchored stops. Generated from a human seed (see below).
+- **Live scan** — real-time OSM curvature scan around **any searched address** (or your saved
+  default), hardened: multi-mirror retry, client timeout, distinct error states.
 
 ## Quick start
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # unit tests (geometry, maps URLs, overpass, scoring)
+npm test         # unit tests (geometry, maps URLs, overpass, geocode, settings, datasets)
 npm run build    # production build into dist/  (base path /sinuosity/)
 ```
 
@@ -56,6 +59,19 @@ data, not from a hand-typed list. To re-rate/clean an *existing* dataset determi
 (no network), run `npm run scenic:recurate` — it re-measures curvature, removes spurs, and
 re-scores `src/data/scenicRoutes.ts` in place.
 
+## Regenerating the curated dataset
+
+The Curated slate is the hand-picked half, built to the same quality bar as Scenic. The human
+input is `scripts/data/curated-seed.mjs` (one entry per corridor: theme, region, summary,
+whyRide, rubric estimates, sketch waypoints, and authored stops). `npm run curated:build`
+(`scripts/curate-routes.mjs`) then OSRM-snaps each corridor to real road geometry, cleans
+spurs, **measures** curvature, snaps every stop to its nearest Street View pano (re-aiming the
+camera at the view), composite-scores the rubric, and writes `src/data/curatedRoutes.ts`
+(sorted by score). It reuses the shared metrics in `scripts/lib/scenic-metrics.mjs`; the
+shipped data is pinned by `src/lib/curatedRoutes.test.ts`. Edit the seed and re-run to refresh
+— don't hand-edit the generated file. (Street View snapping reads `VITE_GOOGLE_MAPS_KEY` from
+`.env.local`; without it the build still runs and stops keep their authored coordinates.)
+
 ## Architecture
 
 ```
@@ -64,22 +80,23 @@ src/
     geometry.ts        haversine, cos-lat sinuosity, curvature10, cleanCoords/spur removal (tested)
     scenicScore.ts     motorcycle-weighted composite score from the rubric (tested)
     mapsUrl.ts         Google/Apple Maps URL builders, waypoint cap, NaN guards (tested)
-    scoring.ts         curated composite scoring (tested)
+    geocode.ts         keyless Nominatim forward/reverse geocoding for the location search (tested)
+    settings.ts        saved default location, localStorage-backed with safe fallbacks (tested)
     overpass.ts        hardened Overpass client: out-geom query, remark detection,
                        multi-mirror retry, abort support, name dedup (tested)
     scenicImagery.ts   Google Street View / satellite URL builders (runtime key) + deep-links
+    scenicMeta.ts      shared stop-kind icons + rubric labels
   data/
-    types.ts           shared types (Route, ScenicRoute, ScenicStop, ScenicRubric)
-    routes.ts          curated WNY route database
+    types.ts           shared types (ScenicRoute, ScenicStop, ScenicRubric, ScannedRoad)
     scenicRoutes.ts    GENERATED scenic dataset (do not hand-edit)
+    curatedRoutes.ts   GENERATED curated dataset (do not hand-edit — edit the seed)
   hooks/
     useLeafletMap.ts   map lifecycle, attribution, resize handling
     useBottomSheet.ts  pointer-driven sheet (mobile) / docked panel (desktop)
-  lib/
-    scenicMeta.ts      shared stop-kind icons + rubric labels
   components/
-    RouteDetail.tsx        curated/scan detail + maps handoff
-    ScenicRouteReview.tsx  full-page scenic review: satellite hero, rubric, big Street View stops
+    LocationSearch.tsx     first-class address search + use-my-location + saved default
+    RouteDetail.tsx        scan detail + maps handoff (origin = scan center)
+    ScenicRouteReview.tsx  full-page review (scenic + curated): satellite hero, rubric, Street View stops
   App.tsx              wires it together (Scenic / Curated / Live scan tabs)
 ```
 

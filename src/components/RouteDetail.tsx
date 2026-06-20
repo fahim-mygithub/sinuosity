@@ -14,10 +14,10 @@ export interface DetailData {
   coords: LatLng[];
 }
 
-export function RouteDetail({ data }: { data: DetailData | null }) {
+export function RouteDetail({ data, origin }: { data: DetailData | null; origin?: LatLng }) {
   if (!data) return null;
-  const gmaps = googleMapsUrl(data.coords);
-  const amaps = appleMapsUrl(data.coords);
+  const gmaps = googleMapsUrl(data.coords, { origin });
+  const amaps = appleMapsUrl(data.coords, origin);
 
   return (
     <div className="flex flex-col gap-2 border-t border-slate-800 pt-3 mt-3 animate-fadeIn">

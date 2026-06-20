@@ -24,10 +24,13 @@ export function ScenicRouteReview({
   route,
   onBack,
   onLocate,
+  origin,
 }: {
   route: ScenicRoute;
   onBack: () => void;
   onLocate: (index: number, lat: number, lon: number) => void;
+  /** Navigation start point ("Ride it" origin); falls back to HOME when omitted. */
+  origin?: LatLng;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const heroRef = useRef<HTMLDivElement | null>(null);
@@ -42,8 +45,8 @@ export function ScenicRouteReview({
     maptype: 'hybrid',
     stops: route.stops.map((s) => [s.lat, s.lon] as [number, number]),
   });
-  const gmaps = googleMapsUrl(route.coords);
-  const amaps = appleMapsUrl(route.coords);
+  const gmaps = googleMapsUrl(route.coords, { origin });
+  const amaps = appleMapsUrl(route.coords, origin);
 
   // Focus the back button on open; Esc closes.
   useEffect(() => {
