@@ -18,9 +18,11 @@ const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'User-Agent': 'Sinuosity/2.0 build pipeline (scenic ride finder; contact: github.com/sinuosity)',
 };
-// WNY scenic belt: Niagara gorge + Lake Ontario shore down through Buffalo,
-// the Southtowns hills, Zoar Valley, Cattaraugus, Allegany, and east to Letchworth.
-const BBOX = '42.05,-79.20,43.40,-77.75'; // south,west,north,east
+// WNY scenic belt (widened to match scripts/discover-roads.mjs): west to Chautauqua Lake /
+// NY-394, south to the PA line / Allegany, east to the Bristol Hills / Naples (NY-64), north
+// to the Lake Ontario shore. The old box excluded Chautauqua and the Southern Tier — exactly
+// where several of WNY's renowned riding roads live.
+const BBOX = '41.99,-79.85,43.40,-77.25'; // south,west,north,east
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

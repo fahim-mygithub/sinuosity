@@ -10,6 +10,7 @@ export const meta = {
 
 const HOME = '42.9808,-78.7441'
 const DATA = 'scripts/data/scenic-raw.json'
+const DISCOVERED = 'scripts/data/discovered-roads.json' // roads pre-ranked by MEASURED curvature (scripts/discover-roads.mjs)
 
 // Seed corridors spanning the WNY scenic belt. Agents ground these in the gathered POIs.
 const REPAIR_SCHEMA = {
@@ -118,12 +119,14 @@ const composedRaw = await parallel(
     agent(
       `You are composing a SCENIC MOTORCYCLE ROUTE for the "${c.name}" corridor in Western NY. ` +
       `The rider's home base is ${HOME} (36 Char Del Way, Williamsville). ` +
-      `FIRST: read the file ${DATA} and filter its POIs (viewpoint/waterfall/peak/attraction/reserve/water) to roughly within bbox [${c.bbox}] (south,west,north,east). ` +
+      `FIRST: read ${DISCOVERED} (roads pre-ranked by MEASURED curvature) and pick the highest-ranked genuinely twisty roads near bbox [${c.bbox}] to anchor this ride on. ` +
+      `THEN read ${DATA} and filter its POIs (viewpoint/waterfall/peak/attraction/reserve/water) to roughly within that bbox (south,west,north,east). ` +
       `Corridor character: ${c.hint}. ` +
-      `Using the REAL POIs you found plus your knowledge of WNY roads, design one great ride:\n` +
-      `- Pick a genuinely twisty and/or scenic road corridor. Give ordered [lat,lon] waypoints (2-8) tracing it — these get OSRM-snapped to real roads, so put them ON real roads.\n` +
-      `- Define 3-6 photo STOPS anchored to real scenic features (use the POI coords you read; set "source" to the POI name). Each stop: a heading (degrees, 0=N) pointing the Street View camera AT the view, and a vivid blurb of what you'll see. Stops MUST be at points a car/bike can reach (on or beside a road) so Street View imagery exists.\n` +
-      `- Score the rubric 0-10 each: curvature (twistiness), scenery (viewpoints/falls/peaks density), greenery (forest/parks), water (creek/lake/gorge proximity), notability (Wikipedia/wikidata-tagged or famous features). Justify in rubricEvidence citing specific POIs.\n` +
+      `IMPORTANT: curvature is MEASURED from the snapped geometry at assemble time, NOT from your rubric guess — so a pretty-but-straight route will score low. Trace the actual twisty pavement.\n` +
+      `Using the discovered twisty roads + the REAL POIs you found, design one great ride:\n` +
+      `- Trace a genuinely twisty road corridor with ordered [lat,lon] waypoints (2-8) ON real roads (they get OSRM-snapped). Prefer the discovered high-curvature roads over straight arterials.\n` +
+      `- Define 3-6 photo STOPS anchored to real scenic features (use the POI coords you read; set "source" to the POI name). Each stop: a heading (degrees, 0=N, NEVER leave it 0) pointing the Street View camera AT the view, and a vivid blurb of what you'll see. Stops MUST be at points a car/bike can reach (on or beside a road) so Street View imagery exists.\n` +
+      `- Score the rubric 0-10 each: curvature (advisory only — geometry wins), scenery (viewpoints/falls/peaks density), greenery (forest/parks), water (creek/lake/gorge proximity), notability (Wikipedia/wikidata-tagged or famous features). Justify in rubricEvidence citing specific POIs.\n` +
       `Do NOT invent POIs that aren't in the data or that you aren't confident are real. Prefer accuracy over drama.`,
       { label: `compose:${c.key}`, phase: 'Compose', schema: ROUTE_SCHEMA }
     ).then((route) => (route ? { route, corridor: c.key } : null))

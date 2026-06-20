@@ -9,7 +9,13 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "scenic:gather": "node scripts/gather-scenic.mjs",
+    "scenic:discover": "node scripts/discover-roads.mjs",
+    "scenic:snap": "node scripts/snap-streetview.mjs",
+    "scenic:assemble": "node scripts/assemble-scenic.mjs",
+    "scenic:recurate": "node scripts/recurate-scenic.mjs",
+    "scenic:verify": "node scripts/verify-roads.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

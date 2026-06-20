@@ -17,7 +17,14 @@ export function hasGoogleKey(): boolean {
   return KEY.length > 0;
 }
 
-/** Street View Static thumbnail facing `heading`. Returns null without a key. */
+/**
+ * Street View Static thumbnail facing `heading`. Returns null without a key.
+ *
+ * `return_error_code=true` makes a missing-pano location return HTTP 404 instead of a
+ * silent gray "no imagery" tile (HTTP 200) — so the caller's <img> onError fires and the
+ * designed kind-icon fallback shows, instead of a broken gray box in a shared screenshot.
+ * `scale=2` matches the satellite hero's resolution so stop frames are crisp on retina.
+ */
 export function streetViewStaticUrl(
   lat: number,
   lon: number,
@@ -27,12 +34,14 @@ export function streetViewStaticUrl(
   if (!KEY) return null;
   if (![lat, lon, heading].every(Number.isFinite)) return null;
   const params = new URLSearchParams({
-    size: opts.size ?? '640x360',
+    size: opts.size ?? '640x400',
     location: `${lat},${lon}`,
     heading: String(Math.round(heading)),
-    pitch: String(opts.pitch ?? 2),
-    fov: String(opts.fov ?? 82),
+    pitch: String(opts.pitch ?? 4),
+    fov: String(opts.fov ?? 78),
     source: 'outdoor',
+    scale: '2',
+    return_error_code: 'true',
     key: KEY,
   });
   return `https://maps.googleapis.com/maps/api/streetview?${params.toString()}`;
@@ -47,26 +56,65 @@ function downsample(coords: LatLng[], max: number): LatLng[] {
   return out;
 }
 
+/** Encode a polyline with Google's algorithm so we can afford a casing path + markers. */
+function encodePolyline(coords: LatLng[]): string {
+  let lastLat = 0;
+  let lastLon = 0;
+  let out = '';
+  const enc = (curr: number, prev: number): string => {
+    let v = Math.round(curr * 1e5) - Math.round(prev * 1e5);
+    v = v < 0 ? ~(v << 1) : v << 1;
+    let s = '';
+    while (v >= 0x20) {
+      s += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+      v >>= 5;
+    }
+    s += String.fromCharCode(v + 63);
+    return s;
+  };
+  for (const [lat, lon] of coords) {
+    out += enc(lat, lastLat) + enc(lon, lastLon);
+    lastLat = lat;
+    lastLon = lon;
+  }
+  return out;
+}
+
 /**
- * Static satellite hero image with the route drawn as an emerald path overlay.
- * Returns null without a key.
+ * Static satellite hero with the route drawn as a bright emerald path over a dark casing
+ * (so it stays legible against both water and forest, instead of a 1–2px hairline), plus
+ * numbered markers for each scenic stop so the image tells the ride's story. Returns null
+ * without a key.
  */
 export function staticRouteSatelliteUrl(
   coords: LatLng[],
-  opts: { size?: string; maptype?: 'satellite' | 'hybrid' | 'terrain' } = {},
+  opts: { size?: string; maptype?: 'satellite' | 'hybrid' | 'terrain'; stops?: LatLng[] } = {},
 ): string | null {
   if (!KEY) return null;
   const valid = coords.filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
   if (valid.length === 0) return null;
-  const pts = downsample(valid, 60);
-  const path = 'weight:4|color:0x34d399ff|' + pts.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join('|');
+  const enc = encodePolyline(downsample(valid, 90));
+
   const params = new URLSearchParams({
-    size: opts.size ?? '640x360',
+    size: opts.size ?? '640x400',
     maptype: opts.maptype ?? 'hybrid',
     scale: '2',
     key: KEY,
   });
-  return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}&path=${encodeURIComponent(path)}`;
+  // Casing first (drawn underneath), bright route on top — both as encoded polylines.
+  const casing = `weight:8|color:0x0b3d2eff|enc:${enc}`;
+  const route = `weight:5|color:0x34d399ff|enc:${enc}`;
+
+  let markers = '';
+  const stops = (opts.stops ?? []).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1])).slice(0, 9);
+  stops.forEach((p, i) => {
+    markers += `&markers=${encodeURIComponent(`size:small|color:0x059669|label:${i + 1}|${p[0].toFixed(5)},${p[1].toFixed(5)}`)}`;
+  });
+
+  return (
+    `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}` +
+    `&path=${encodeURIComponent(casing)}&path=${encodeURIComponent(route)}${markers}`
+  );
 }
 
 /**

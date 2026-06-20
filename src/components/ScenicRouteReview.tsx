@@ -37,7 +37,11 @@ export function ScenicRouteReview({
   const [heroFailed, setHeroFailed] = useState(false);
   const [heroLoaded, setHeroLoaded] = useState(false);
 
-  const hero = staticRouteSatelliteUrl(route.coords, { size: '640x400', maptype: 'hybrid' });
+  const hero = staticRouteSatelliteUrl(route.coords, {
+    size: '640x400',
+    maptype: 'hybrid',
+    stops: route.stops.map((s) => [s.lat, s.lon] as [number, number]),
+  });
   const gmaps = googleMapsUrl(route.coords);
   const amaps = appleMapsUrl(route.coords);
 
@@ -296,7 +300,7 @@ function StopFeature({
 function StopHero({ stop, eager }: { stop: ScenicStop; eager: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  const src = streetViewStaticUrl(stop.lat, stop.lon, stop.heading, { size: '640x400', fov: 90 });
+  const src = streetViewStaticUrl(stop.lat, stop.lon, stop.heading, { size: '640x400' });
   const show = src && !failed;
   return (
     <div className="relative aspect-[16/10] lg:aspect-[4/3] w-full rounded-2xl ring-1 ring-white/10 overflow-hidden bg-slate-900">

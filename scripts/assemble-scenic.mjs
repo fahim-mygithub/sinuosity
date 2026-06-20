@@ -1,10 +1,14 @@
 // Assemble the final scenic dataset: take the agentic workflow's judged routes, snap
-// each route's waypoints to real road geometry via OSRM (keyless), recompute curvature
-// objectively from the snapped polyline, and emit src/data/scenicRoutes.ts.
+// each route's waypoints to real road geometry via OSRM (keyless), CLEAN the polyline
+// (dedup + out-and-back spur removal), MEASURE curvature objectively from that cleaned
+// geometry, compute a transparent motorcycle-weighted composite score, and emit
+// src/data/scenicRoutes.ts (sorted by score). All curvature/score math lives in
+// scripts/lib/scenic-metrics.mjs (mirrored by src/lib/geometry.ts).
 //
-// Run: node scripts/assemble-scenic.mjs
+// Run: node scripts/assemble-scenic.mjs   (run snap-streetview.mjs first to verify stops)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { cleanCoords, curvature10, compositeScore, pathLengthKm, COMPOSITE_WEIGHTS } from './lib/scenic-metrics.mjs';
 
 const IN = fileURLToPath(new URL('./data/scenic-judged.json', import.meta.url));
 const OUT = fileURLToPath(new URL('../src/data/scenicRoutes.ts', import.meta.url));
@@ -19,19 +23,9 @@ function haversine(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 function pathLength(c) { let d = 0; for (let i = 0; i < c.length - 1; i++) d += haversine(c[i], c[i + 1]); return d; }
-function curvatureDensity(coords) {
-  const dist = pathLength(coords);
-  if (dist < 0.25) return 0;
-  let dev = 0;
-  for (let i = 1; i < coords.length - 1; i++) {
-    const ls = Math.cos(((coords[i - 1][0] + coords[i][0]) / 2) * Math.PI / 180);
-    const v1 = [coords[i][0] - coords[i - 1][0], (coords[i][1] - coords[i - 1][1]) * ls];
-    const v2 = [coords[i + 1][0] - coords[i][0], (coords[i + 1][1] - coords[i][1]) * ls];
-    const m1 = Math.hypot(...v1), m2 = Math.hypot(...v2);
-    if (m1 > 0 && m2 > 0) dev += Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (m1 * m2))));
-  }
-  return dev / dist;
-}
+// Curvature is measured by the shared metrics module (curvature10) on the cleaned,
+// snapped polyline — never hand-assigned. (The old in-file curvatureDensity that the
+// pipeline defined-but-discarded has been removed; see scripts/lib/scenic-metrics.mjs.)
 
 async function osrmSnap(waypoints) {
   // OSRM wants lon,lat; our waypoints are [lat,lon].
@@ -85,7 +79,7 @@ const tsLiteral = (v) => JSON.stringify(v);
     // network can force an absurd cross-border detour). Try the waypoints first; if that
     // detours, route through the road-snapped STOPS (guaranteed on drivable roads), which
     // also makes the drawn line pass through every numbered pin.
-    const isDetour = (snap, ref) => !snap || snap.coords.length < 4 || snap.km > Math.max(8, pathLength(ref) * 2.3);
+    const isDetour = (snap, ref) => !snap || snap.coords.length < 4 || snap.km > Math.max(8, pathLength(ref) * 1.5);
     let chosen = null, via = '';
     const wpSnap = await osrmSnap(r.waypoints);
     if (!isDetour(wpSnap, wpLine)) { chosen = wpSnap; via = 'waypoints'; }
@@ -96,9 +90,13 @@ const tsLiteral = (v) => JSON.stringify(v);
 
     let coords, km, time;
     if (chosen) {
-      coords = downsample(chosen.coords, 150);
-      km = chosen.km;
-      time = drivingTime(chosen.sec);
+      // Clean the OSRM geometry (dedup + out-and-back spur removal) BEFORE measuring/
+      // downsampling, so distance, curvature and the drawn line all reflect the real road.
+      const cleaned = cleanCoords(chosen.coords);
+      coords = downsample(cleaned, 150);
+      km = pathLengthKm(cleaned);
+      const scale = chosen.km > 0 ? km / chosen.km : 1; // discount any spur miles from the time too
+      time = drivingTime(chosen.sec * scale);
       if (via === 'stops') console.warn(`  [${r.id}] waypoint route detoured — used road-snapped STOPS instead`);
     } else {
       const straightLine = pathLength(wpLine);
@@ -107,6 +105,11 @@ const tsLiteral = (v) => JSON.stringify(v);
       time = `~${Math.round((straightLine / 50) * 60)} min`;
       console.warn(`  [${r.id}] OSRM unusable for waypoints AND stops — using coarse waypoint polyline`);
     }
+
+    // Curvature is MEASURED from the cleaned polyline; score is a transparent,
+    // motorcycle-weighted composite of the rubric (NOT the opaque LLM judge number).
+    const rubric = { ...r.rubric, curvature: curvature10(coords) };
+    const score = compositeScore(rubric);
 
     out.push({
       id: r.id,
@@ -117,10 +120,8 @@ const tsLiteral = (v) => JSON.stringify(v);
       drivingTime: time,
       summary: r.summary,
       whyRide: entry.whyRide || r.whyRide || '',
-      // Trust the agentic judge/repair rubric — recomputing curvature on a dense OSRM
-      // polyline over-counts vertex noise (a straight cruiser scored ~6).
-      rubric: r.rubric,
-      score: entry.judgeScore ?? r.score ?? 0,
+      rubric,
+      score,
       color: PALETTE[i % PALETTE.length],
       coords,
       // Project to the ScenicStop shape (drop pipeline-only flags like streetView).
@@ -129,7 +130,7 @@ const tsLiteral = (v) => JSON.stringify(v);
         kind: s.kind, heading: s.heading, ...(s.source ? { source: s.source } : {}),
       })),
     });
-    console.log(`  [${r.id}] ${out[out.length - 1].distanceKm}km, ${coords.length} pts, curve ${r.rubric.curvature}, score ${out[out.length - 1].score}${via ? ' [via ' + via + ']' : ' [waypoint-fallback]'}`);
+    console.log(`  [${r.id}] ${out[out.length - 1].distanceKm}km, ${coords.length} pts, curve ${rubric.curvature} (measured), score ${score}${via ? ' [via ' + via + ']' : ' [waypoint-fallback]'}`);
     i++;
     await sleep(1200);
   }
@@ -138,11 +139,14 @@ const tsLiteral = (v) => JSON.stringify(v);
 
   const header = `import type { ScenicRoute } from './types';\n\n` +
     `/**\n` +
-    ` * Scenic WNY motorcycle routes — generated by the build-time agentic pipeline\n` +
-    ` * (scripts/gather-scenic.mjs -> scripts/scenic-workflow.js -> scripts/assemble-scenic.mjs).\n` +
-    ` * Geometry is OSRM-snapped to real roads; curvature is measured from that geometry;\n` +
-    ` * scenery/greenery/water/notability and stop selection come from OSM POIs + an agentic\n` +
-    ` * judge panel. Regenerate by re-running the pipeline — do not hand-edit.\n` +
+    ` * Scenic WNY motorcycle routes — generated by the build-time pipeline\n` +
+    ` * (gather-scenic -> scenic-workflow compose/judge/repair -> snap-streetview -> assemble-scenic).\n` +
+    ` * Geometry is OSRM-snapped to real roads and cleaned of duplicate points and out-and-back\n` +
+    ` * spurs; rubric.curvature is MEASURED from that geometry (radians/km -> 0-10, the same scale\n` +
+    ` * as the Live-scan tab); scenery/greenery/water/notability and stop selection come from OSM\n` +
+    ` * POIs + the judge panel; score is a transparent motorcycle-weighted composite of the rubric\n` +
+    ` * (curvature ${COMPOSITE_WEIGHTS.curvature}, scenery ${COMPOSITE_WEIGHTS.scenery}, greenery ${COMPOSITE_WEIGHTS.greenery}, water ${COMPOSITE_WEIGHTS.water}, notability ${COMPOSITE_WEIGHTS.notability}).\n` +
+    ` * Regenerate by re-running the pipeline — do not hand-edit.\n` +
     ` */\n`;
   const body = `export const SCENIC_ROUTES: ScenicRoute[] = ${tsLiteral(out)};\n`;
   writeFileSync(OUT, header + body);
