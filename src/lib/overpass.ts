@@ -16,6 +16,15 @@ const OVERPASS_ENDPOINTS = [
 /** Server-side query budget (seconds). Kept tight so a stuck query fails fast. */
 const SERVER_TIMEOUT_S = 15;
 
+/**
+ * Per-mirror connection budget (ms). The public Overpass instances are frequently overloaded;
+ * without this, one slow/stalled mirror consumes the caller's entire timeout before the next
+ * mirror is even tried (the spinner appears to "hang"). With it, a stalled mirror is abandoned
+ * quickly and we fail over — so a healthy mirror in the pool still answers fast. 3 mirrors × 8s
+ * stays under the caller's ~25s overall budget, so every mirror gets a turn.
+ */
+const PER_MIRROR_TIMEOUT_MS = 8000;
+
 export class OverpassError extends Error {
   constructor(message: string, public kind: 'timeout' | 'http' | 'network' | 'empty') {
     super(message);
@@ -45,12 +54,22 @@ async function fetchOverpass(query: string, signal?: AbortSignal): Promise<Overp
   let lastErr: OverpassError | null = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
+    if (signal?.aborted) throw new OverpassError('Scan cancelled', 'timeout');
+
+    // Bound each mirror with its own timer AND forward the caller's signal, so a stalled mirror
+    // is abandoned after PER_MIRROR_TIMEOUT_MS while a real cancel/overall-timeout still stops us.
+    const attempt = new AbortController();
+    const onCallerAbort = () => attempt.abort();
+    signal?.addEventListener('abort', onCallerAbort, { once: true });
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; attempt.abort(); }, PER_MIRROR_TIMEOUT_MS);
+
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'data=' + encodeURIComponent(query),
-        signal,
+        signal: attempt.signal,
       });
 
       if (!res.ok) {
@@ -72,9 +91,17 @@ async function fetchOverpass(query: string, signal?: AbortSignal): Promise<Overp
       }
       return data;
     } catch (e) {
-      // A client-side abort (manual cancel or our timeout) should not retry.
-      if ((e as Error).name === 'AbortError') throw new OverpassError('Scan timed out', 'timeout');
-      lastErr = new OverpassError('Network request failed', 'network');
+      // An abort we did NOT trigger (the caller cancelled or the overall timeout fired) stops the
+      // whole sequence. Our own per-mirror timeout just fails this mirror over to the next one.
+      if ((e as Error).name === 'AbortError' && !timedOut) {
+        throw new OverpassError('Scan timed out', 'timeout');
+      }
+      lastErr = timedOut
+        ? new OverpassError(`Mirror timed out: ${endpoint}`, 'timeout')
+        : new OverpassError('Network request failed', 'network');
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onCallerAbort);
     }
   }
 

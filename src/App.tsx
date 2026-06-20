@@ -213,7 +213,7 @@ export default function App() {
       const kind = e instanceof OverpassError ? e.kind : 'network';
       showToast(
         kind === 'timeout'
-          ? 'OpenStreetMap timed out — try a smaller radius'
+          ? 'OpenStreetMap servers are busy right now — wait a moment and retry, or use a smaller radius'
           : kind === 'http'
             ? 'OpenStreetMap is busy — retry in a moment'
             : 'Scan failed — check your connection',

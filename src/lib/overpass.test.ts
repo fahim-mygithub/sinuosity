@@ -24,7 +24,7 @@ const ZIGZAG_WAY = {
   ],
 };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('scanRoads error handling', () => {
   it('throws timeout when Overpass returns HTTP 200 + a runtime-error remark', async () => {
@@ -50,11 +50,36 @@ describe('scanRoads error handling', () => {
     await expect(scanRoads(HOME, 10, 0.3)).rejects.toMatchObject({ kind: 'network' });
   });
 
-  it('throws timeout immediately on abort (does not retry mirrors)', async () => {
+  it('throws timeout immediately on a caller abort (does not retry mirrors)', async () => {
     const abortErr = Object.assign(new Error('aborted'), { name: 'AbortError' });
     globalThis.fetch = vi.fn().mockRejectedValue(abortErr);
     await expect(scanRoads(HOME, 10, 0.3)).rejects.toMatchObject({ kind: 'timeout' });
     expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  });
+
+  it('abandons a stalled mirror after the per-mirror timeout and fails over to the next', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    globalThis.fetch = vi.fn((_url: string, opts: { signal: AbortSignal }) => {
+      calls++;
+      if (calls === 1) {
+        // First mirror stalls: it only settles if/when its signal is aborted.
+        return new Promise<Response>((_resolve, reject) => {
+          opts.signal.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+          );
+        });
+      }
+      // Second mirror answers fine.
+      return Promise.resolve(jsonResponse({ elements: [ZIGZAG_WAY] }));
+    }) as typeof fetch;
+
+    const p = scanRoads(HOME, 10, 0.1);
+    await vi.advanceTimersByTimeAsync(8000); // trip the per-mirror timeout on mirror #1
+    const roads = await p;
+    expect(calls).toBe(2); // failed over, did not give up
+    expect(roads).toHaveLength(1);
+    expect(roads[0].name).toBe('Twisty Hollow Rd');
   });
 
   it('is an OverpassError with a usable message', async () => {
