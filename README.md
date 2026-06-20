@@ -61,10 +61,12 @@ src/
     scenicRoutes.ts    GENERATED scenic dataset (do not hand-edit)
   hooks/
     useLeafletMap.ts   map lifecycle, attribution, resize handling
-    useBottomSheet.ts  draggable sheet via React state (no DOMMatrix)
+    useBottomSheet.ts  pointer-driven sheet (mobile) / docked panel (desktop)
+  lib/
+    scenicMeta.ts      shared stop-kind icons + rubric labels
   components/
     RouteDetail.tsx        curated/scan detail + maps handoff
-    ScenicRoutePreview.tsx satellite hero, rubric bars, scenic-stop list w/ Street View
+    ScenicRouteReview.tsx  full-page scenic review: satellite hero, rubric, big Street View stops
   App.tsx              wires it together (Scenic / Curated / Live scan tabs)
 ```
 

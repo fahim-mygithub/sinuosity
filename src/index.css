@@ -31,3 +31,10 @@ input[type='range']::-moz-range-thumb { height: 26px; width: 26px; border-radius
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .animate-fadeIn { animation: fadeIn 0.25s ease both; }
 .leaflet-popup-content-wrapper { border-radius: 12px; }
+
+/* Respect reduced-motion: neutralize entrance/spinner animations (motion-safe: utilities already opt out). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn { animation: none; opacity: 1; transform: none; }
+  .animate-spin { animation: none; }
+  .sheet { transition: none; }
+}

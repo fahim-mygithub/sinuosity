@@ -8,7 +8,8 @@ import { CURATED_ROUTES } from './data/routes';
 import { SCENIC_ROUTES } from './data/scenicRoutes';
 import { HOME } from './lib/mapsUrl';
 import { RouteDetail, type DetailData } from './components/RouteDetail';
-import { ScenicRoutePreview } from './components/ScenicRoutePreview';
+import { ScenicRouteReview } from './components/ScenicRouteReview';
+import { KIND_ICON } from './lib/scenicMeta';
 import type { Weights, ScoredRoute, Pin, ScenicRoute, ScenicStop } from './data/types';
 import type { ScannedRoad } from './data/types';
 
@@ -16,10 +17,6 @@ type Tab = 'scenic' | 'curated' | 'scanner';
 
 const SCENIC_SORTED = [...SCENIC_ROUTES].sort((a, b) => b.score - a.score);
 const escapeHtml = (s: string) => s.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
-const STOP_ICON: Record<ScenicStop['kind'], string> = {
-  viewpoint: '🌄', waterfall: '💦', gorge: '🪨', water: '💧', overlook: '🔭',
-  village: '🏘️', forest: '🌲', bridge: '🌉', caution: '⚠️',
-};
 
 export default function App() {
   const { map, ready, clearLayers, addLayer } = useLeafletMap('map');
@@ -29,6 +26,11 @@ export default function App() {
   const [weights, setWeights] = useState<Weights>({ sinuosity: 7, scenery: 9, community: 8 });
   const [detail, setDetail] = useState<DetailData | null>(null);
   const [scenicDetail, setScenicDetail] = useState<ScenicRoute | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [activeStopIdx, setActiveStopIdx] = useState<number | null>(null);
+  const lastScenicFocus = useRef<HTMLElement | null>(null);
+  const fittedRouteId = useRef<string | null>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState('Pick a scenic ride — preview the stops, then send it to Maps');
   const [scanRadius, setScanRadius] = useState(12);
   const [scanIntensity, setScanIntensity] = useState(6);
@@ -49,13 +51,20 @@ export default function App() {
     [sheet.isMobile],
   );
 
-  // Esc collapses the expanded mobile sheet.
+  // While the full-page review is open, make everything behind it inert: removes it from the
+  // tab order (focus trap) and blocks pointer interaction with the map/sheet underneath.
   useEffect(() => {
-    if (!sheet.isMobile || sheet.state !== 'full') return;
+    const el = chromeRef.current;
+    if (el) el.inert = reviewOpen;
+  }, [reviewOpen]);
+
+  // Esc collapses the expanded mobile sheet (but not while the full-page review owns Esc).
+  useEffect(() => {
+    if (!sheet.isMobile || sheet.state !== 'full' || reviewOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') sheet.collapse(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sheet.isMobile, sheet.state, sheet.collapse, sheet]);
+  }, [sheet.isMobile, sheet.state, sheet.collapse, sheet, reviewOpen]);
 
   const drawPin = useCallback((pin: Pin) => {
     const icon = L.divIcon({
@@ -66,17 +75,21 @@ export default function App() {
     addLayer(L.marker([pin.lat, pin.lon], { icon }).bindPopup(`<b>${escapeHtml(pin.title)}</b><br><span style="color:#475569">${escapeHtml(pin.desc)}</span>`));
   }, [addLayer]);
 
-  const drawScenicStop = useCallback((stop: ScenicStop, index: number, color: string) => {
+  const drawScenicStop = useCallback((stop: ScenicStop, index: number, color: string, active: boolean) => {
+    const size = active ? 38 : 26;
+    const ring = active ? '3px solid #34d399' : '2px solid #fff';
     const icon = L.divIcon({
       className: '',
-      html: `<div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#020617;background:${color};border:2px solid #fff;border-radius:9999px;box-shadow:0 1px 5px rgba(0,0,0,.6)">${index + 1}</div>`,
-      iconSize: [26, 26], iconAnchor: [13, 13],
+      html: `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:${active ? 15 : 11}px;font-weight:800;color:#020617;background:${color};border:${ring};border-radius:9999px;box-shadow:0 1px 6px rgba(0,0,0,.7)${active ? ';outline:4px solid rgba(52,211,153,.35)' : ''}">${index + 1}</div>`,
+      iconSize: [size, size], iconAnchor: [size / 2, size / 2],
     });
-    addLayer(
-      L.marker([stop.lat, stop.lon], { icon }).bindPopup(
-        `<b>${STOP_ICON[stop.kind]} ${escapeHtml(stop.title)}</b><br><span style="color:#475569">${escapeHtml(stop.blurb)}</span>`,
-      ),
+    const m = L.marker([stop.lat, stop.lon], { icon, zIndexOffset: active ? 1000 : 0 }).bindPopup(
+      `<b>${KIND_ICON[stop.kind]} ${escapeHtml(stop.title)}</b><br><span style="color:#475569">${escapeHtml(stop.blurb)}</span>`,
+      // The active popup auto-opens during "Locate" — keep autoPan off so it doesn't fight flyTo.
+      active ? { autoPan: false } : undefined,
     );
+    addLayer(m);
+    if (active) m.openPopup();
   }, [addLayer]);
 
   // Render curated routes whenever weights change and the tab is active.
@@ -98,24 +111,49 @@ export default function App() {
     if (scenicDetail) {
       const r = scenicDetail;
       addLayer(L.polyline(r.coords, { color: r.color, weight: 5, opacity: 0.92 }));
-      r.stops.forEach((s, i) => drawScenicStop(s, i, r.color));
-      const b = L.polyline(r.coords).getBounds();
-      if (b.isValid()) map.fitBounds(b, fitOptions());
+      r.stops.forEach((s, i) => drawScenicStop(s, i, r.color, i === activeStopIdx));
+      // Fit once per route — not on activeStopIdx change, so "Locate" flyTo isn't overridden.
+      if (fittedRouteId.current !== r.id) {
+        const b = L.polyline(r.coords).getBounds();
+        if (b.isValid()) map.fitBounds(b, fitOptions());
+        fittedRouteId.current = r.id;
+      }
     } else {
+      fittedRouteId.current = null;
       SCENIC_SORTED.forEach((r) => addLayer(L.polyline(r.coords, { color: r.color, weight: 4, opacity: 0.8 })));
       map.setView(HOME, 9);
     }
-  }, [ready, tab, scenicDetail, map, clearLayers, addLayer, drawScenicStop, fitOptions]);
+  }, [ready, tab, scenicDetail, activeStopIdx, map, clearLayers, addLayer, drawScenicStop, fitOptions]);
 
-  const selectScenic = (r: ScenicRoute) => {
+  const selectScenic = useCallback((r: ScenicRoute, originEl?: HTMLElement | null) => {
+    lastScenicFocus.current = originEl ?? null;
     setScenicDetail(r);
-    sheet.expand();
-  };
+    setActiveStopIdx(null);
+    setReviewOpen(true);
+  }, []);
 
-  const flyToStop = (lat: number, lon: number) => {
-    if (!map) return;
-    map.flyTo([lat, lon], 15, { duration: 0.8 });
-  };
+  // Back from the full-page review: clear the route and restore focus to the list.
+  const closeReview = useCallback(() => {
+    setReviewOpen(false);
+    setScenicDetail(null);
+    setActiveStopIdx(null);
+    requestAnimationFrame(() => lastScenicFocus.current?.focus());
+  }, []);
+
+  // "Locate on map": close the overlay but KEEP the route drawn, fly to the stop, announce it,
+  // and move focus back to the ride list so keyboard focus isn't dropped to <body>.
+  const locateStop = useCallback((index: number, lat: number, lon: number) => {
+    setReviewOpen(false);
+    setActiveStopIdx(index);
+    if (map) {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduce) map.setView([lat, lon], 15);
+      else map.flyTo([lat, lon], 15, { duration: 0.8 });
+    }
+    const stop = scenicDetail?.stops[index];
+    if (stop) showToast(`Showing ${stop.title} on the map`);
+    requestAnimationFrame(() => lastScenicFocus.current?.focus());
+  }, [map, scenicDetail, showToast]);
 
   const selectCurated = (r: ScoredRoute) => {
     if (!map) return;
@@ -190,6 +228,8 @@ export default function App() {
     setTab(t);
     setDetail(null);
     setScenicDetail(null);
+    setReviewOpen(false);
+    setActiveStopIdx(null);
     if (t === 'scanner' && map) {
       clearLayers();
       addLayer(L.circle(HOME, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.04, weight: 1, dashArray: '5,8', radius: scanRadius * 1000 }));
@@ -201,6 +241,7 @@ export default function App() {
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950 text-slate-100">
+      <div ref={chromeRef} style={{ display: 'contents' }}>
       <div id="map" className="absolute inset-0 z-0" />
 
       {/* Header */}
@@ -284,29 +325,40 @@ export default function App() {
         >
           {tab === 'scenic' && (
             <div className="flex flex-col gap-3 overflow-hidden">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Scenic rides</h2>
-                  <p className="text-[10px] text-slate-400">{scenicDetail ? 'Preview the stops, then ride it' : 'Agent-generated · scenery-scored · judge-ranked'}</p>
-                </div>
-                {scenicDetail && (
-                  <button onClick={() => setScenicDetail(null)} className="text-[11px] text-slate-400 hover:text-emerald-400 underline font-medium py-2 px-1">← All rides</button>
-                )}
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Scenic rides</h2>
+                <p className="text-[10px] text-slate-400">Agent-generated · scenery-scored · judge-ranked · tap to review</p>
               </div>
+              {/* When a route is on the map but the review is closed: reopen / clear. */}
+              {scenicDetail && !reviewOpen && (
+                <div className="flex items-center gap-2 p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+                  <span className="text-base shrink-0" aria-hidden>📍</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-bold text-slate-100 truncate">{scenicDetail.name}</p>
+                    <p className="text-[9px] text-slate-400">shown on the map</p>
+                  </div>
+                  <button onClick={() => setReviewOpen(true)} className="text-[11px] font-bold text-emerald-400 hover:underline py-2 px-1 shrink-0">Reopen review</button>
+                  <button onClick={closeReview} className="text-[11px] text-slate-400 hover:text-slate-200 py-2 px-1 shrink-0">Clear</button>
+                </div>
+              )}
               <div className="overflow-y-auto custom-scrollbar space-y-2 pr-1" style={{ maxHeight: '64vh' }}>
-                {!scenicDetail ? (
-                  SCENIC_SORTED.map((r) => (
-                    <button key={r.id} onClick={() => selectScenic(r)} className="w-full flex justify-between items-center p-3 rounded-xl border border-slate-800 bg-slate-900/40 active:scale-[.99] transition-all text-left">
+                {SCENIC_SORTED.map((r) => {
+                  const isActive = scenicDetail?.id === r.id;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={(e) => selectScenic(r, e.currentTarget)}
+                      aria-current={isActive ? 'true' : undefined}
+                      className={`w-full flex justify-between items-center p-3 rounded-xl border active:scale-[.99] transition-all text-left ${isActive ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-800 bg-slate-900/40'}`}
+                    >
                       <div className="min-w-0 pr-2">
                         <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
                         <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {r.region} · {r.distanceKm} km</p>
                       </div>
                       <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{r.score}</span>
                     </button>
-                  ))
-                ) : (
-                  <ScenicRoutePreview route={scenicDetail} onFlyTo={flyToStop} />
-                )}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -383,6 +435,12 @@ export default function App() {
           {tab !== 'scenic' && <RouteDetail data={detail} />}
         </div>
       </div>
+      </div>
+
+      {/* Full-page scenic review overlay */}
+      {tab === 'scenic' && reviewOpen && scenicDetail && (
+        <ScenicRouteReview route={scenicDetail} onBack={closeReview} onLocate={locateStop} />
+      )}
     </div>
   );
 }
