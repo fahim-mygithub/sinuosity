@@ -39,6 +39,24 @@ export default function App() {
 
   const showToast = useCallback((m: string) => setToast(m), []);
 
+  // fitBounds padding that keeps the drawn route clear of the panel (left dock on
+  // desktop, bottom sheet on mobile) and the floating header/status chrome.
+  const fitOptions = useCallback(
+    (): L.FitBoundsOptions =>
+      sheet.isMobile
+        ? { paddingTopLeft: [24, 132], paddingBottomRight: [24, 320] }
+        : { paddingTopLeft: [424, 96], paddingBottomRight: [64, 48] },
+    [sheet.isMobile],
+  );
+
+  // Esc collapses the expanded mobile sheet.
+  useEffect(() => {
+    if (!sheet.isMobile || sheet.state !== 'full') return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') sheet.collapse(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sheet.isMobile, sheet.state, sheet.collapse, sheet]);
+
   const drawPin = useCallback((pin: Pin) => {
     const icon = L.divIcon({
       className: '',
@@ -82,12 +100,12 @@ export default function App() {
       addLayer(L.polyline(r.coords, { color: r.color, weight: 5, opacity: 0.92 }));
       r.stops.forEach((s, i) => drawScenicStop(s, i, r.color));
       const b = L.polyline(r.coords).getBounds();
-      if (b.isValid()) map.fitBounds(b, { padding: [70, 70] });
+      if (b.isValid()) map.fitBounds(b, fitOptions());
     } else {
       SCENIC_SORTED.forEach((r) => addLayer(L.polyline(r.coords, { color: r.color, weight: 4, opacity: 0.8 })));
       map.setView(HOME, 9);
     }
-  }, [ready, tab, scenicDetail, map, clearLayers, addLayer, drawScenicStop]);
+  }, [ready, tab, scenicDetail, map, clearLayers, addLayer, drawScenicStop, fitOptions]);
 
   const selectScenic = (r: ScenicRoute) => {
     setScenicDetail(r);
@@ -102,7 +120,7 @@ export default function App() {
   const selectCurated = (r: ScoredRoute) => {
     if (!map) return;
     const pl = L.polyline(r.coords);
-    map.fitBounds(pl.getBounds(), { padding: [60, 60] });
+    map.fitBounds(pl.getBounds(), fitOptions());
     setDetail({
       name: r.name, type: r.type, highlights: r.highlights, score: r.score,
       sinuosity: r.sinuosity, canopy: r.canopy, waterProximity: r.waterProximity,
@@ -114,7 +132,7 @@ export default function App() {
   const selectScan = (r: ScannedRoad) => {
     if (!map) return;
     const pl = L.polyline(r.coords);
-    map.fitBounds(pl.getBounds(), { padding: [60, 60] });
+    map.fitBounds(pl.getBounds(), fitOptions());
     setDetail({
       name: r.name, type: 'Measured from OSM', highlights: `Curve density ${r.curveDensity.toFixed(2)}`,
       score: r.score, sinuosity: r.sinuosity,
@@ -172,7 +190,6 @@ export default function App() {
     setTab(t);
     setDetail(null);
     setScenicDetail(null);
-    sheet.expand();
     if (t === 'scanner' && map) {
       clearLayers();
       addLayer(L.circle(HOME, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.04, weight: 1, dashArray: '5,8', radius: scanRadius * 1000 }));
@@ -187,7 +204,7 @@ export default function App() {
       <div id="map" className="absolute inset-0 z-0" />
 
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-[1000] p-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+      <div className="absolute top-0 left-0 right-0 z-[1200] p-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <div className="max-w-2xl mx-auto bg-slate-900/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex justify-between items-center">
           <div className="min-w-0">
             <h1 className="text-sm font-black tracking-tight text-white flex items-center gap-1.5">
@@ -221,30 +238,50 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom sheet */}
+      {/* Scrim: tap to collapse the expanded mobile sheet */}
+      {sheet.isMobile && sheet.state === 'full' && (
+        <button
+          aria-label="Collapse ride list"
+          onClick={sheet.collapse}
+          className="absolute inset-0 z-[1050] bg-slate-950/50 backdrop-blur-[1px] animate-fadeIn cursor-default"
+        />
+      )}
+
+      {/* Bottom sheet (mobile) · docked side panel (desktop) */}
       <div
         ref={sheet.sheetRef}
-        className="sheet absolute bottom-0 left-0 right-0 mx-auto max-w-2xl z-[1100] bg-slate-900/97 backdrop-blur-md rounded-t-3xl shadow-2xl border-t border-x border-slate-800 flex flex-col"
-        style={{ transform: `translateY(${sheet.translate}px)` }}
+        className={
+          sheet.isMobile
+            ? `sheet${sheet.dragging ? ' dragging' : ''} absolute bottom-0 left-0 right-0 mx-auto max-w-2xl z-[1100] bg-slate-900/97 backdrop-blur-md rounded-t-3xl shadow-2xl border-t border-x border-slate-800 flex flex-col`
+            : 'absolute left-4 top-[92px] z-[1100] w-[384px] max-h-[calc(100vh-112px)] bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-800 flex flex-col overflow-hidden'
+        }
+        style={sheet.isMobile ? { transform: `translateY(${sheet.translate}px)` } : undefined}
+        role={sheet.isMobile ? 'dialog' : 'region'}
+        aria-label="Ride list"
       >
-        <div
-          className="pt-2.5 pb-1.5 flex flex-col items-center cursor-grab active:cursor-grabbing shrink-0"
-          onClick={sheet.toggle}
-          onTouchStart={(e) => sheet.onPointerDown(e.touches[0].clientY)}
-          onTouchMove={(e) => sheet.onPointerMove(e.touches[0].clientY)}
-          onTouchEnd={sheet.onPointerUp}
-          onMouseDown={(e) => {
-            sheet.onPointerDown(e.clientY);
-            const mm = (ev: MouseEvent) => sheet.onPointerMove(ev.clientY);
-            const mu = () => { sheet.onPointerUp(); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); };
-            document.addEventListener('mousemove', mm);
-            document.addEventListener('mouseup', mu);
-          }}
-        >
-          <div className="w-10 h-1.5 bg-slate-600 rounded-full" />
-        </div>
+        {sheet.isMobile && (
+          <button
+            type="button"
+            aria-label={sheet.state === 'full' ? 'Collapse ride list' : 'Expand ride list'}
+            aria-expanded={sheet.state === 'full'}
+            onPointerDown={sheet.onPointerDown}
+            onPointerMove={sheet.onPointerMove}
+            onPointerUp={sheet.onPointerUp}
+            onPointerCancel={sheet.onPointerCancel}
+            onClick={(e) => { if (e.detail === 0) sheet.toggle(); }}
+            className="sheet-handle group w-full pt-3 pb-2 flex flex-col items-center gap-1 shrink-0 cursor-grab active:cursor-grabbing select-none"
+          >
+            <span className="w-10 h-1.5 bg-slate-600 group-hover:bg-slate-500 rounded-full transition-colors" />
+            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">
+              {sheet.state === 'full' ? 'Tap or drag down to close' : 'Tap or drag up for rides'}
+            </span>
+          </button>
+        )}
 
-        <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] overflow-hidden flex flex-col" style={{ maxHeight: '80vh' }}>
+        <div
+          className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto custom-scrollbar flex flex-col min-h-0"
+          style={{ maxHeight: sheet.isMobile ? '80vh' : undefined, paddingTop: sheet.isMobile ? undefined : '1.1rem' }}
+        >
           {tab === 'scenic' && (
             <div className="flex flex-col gap-3 overflow-hidden">
               <div className="flex justify-between items-center">

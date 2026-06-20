@@ -9,6 +9,8 @@
 html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; overscroll-behavior: none; }
 #map { height: 100%; width: 100%; background: #0f172a; }
 
+/* Inner scroll areas must pan by finger and not chain their scroll to the page/sheet. */
+.custom-scrollbar { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(245, 158, 11, 0.35); border-radius: 99px; }
 
@@ -21,8 +23,10 @@ input[type='range']::-webkit-slider-thumb {
 }
 input[type='range']::-moz-range-thumb { height: 26px; width: 26px; border-radius: 50%; background: #34d399; border: 3px solid #022c22; }
 
-.sheet { transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); touch-action: none; max-height: 88vh; }
+.sheet { transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); max-height: 88vh; }
 .sheet.dragging { transition: none; }
+/* Only the grab handle swallows touch gestures, so inner lists stay scrollable. */
+.sheet-handle { touch-action: none; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .animate-fadeIn { animation: fadeIn 0.25s ease both; }
