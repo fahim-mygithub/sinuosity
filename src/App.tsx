@@ -2,16 +2,26 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import { useLeafletMap } from './hooks/useLeafletMap';
 import { useBottomSheet } from './hooks/useBottomSheet';
-import { scanRoads, dedupeByName, OverpassError } from './lib/overpass';
+import { scanArea, OverpassError, type AreaScan } from './lib/overpass';
+import { buildRides } from './lib/routeBuilder';
+import { BIAS_PRESETS, COMPOSITE_WEIGHTS, normalizeWeights, type BiasWeights, type BiasPreset } from './lib/composite';
 import { CURATED_ROUTES } from './data/curatedRoutes';
 import { SCENIC_ROUTES } from './data/scenicRoutes';
 import { loadDefaultLocation, saveDefaultLocation, type SavedLocation } from './lib/settings';
 import { LocationSearch } from './components/LocationSearch';
-import { RouteDetail, type DetailData } from './components/RouteDetail';
 import { ScenicRouteReview } from './components/ScenicRouteReview';
 import { KIND_ICON } from './lib/scenicMeta';
-import type { ScenicRoute, ScenicStop, ScannedRoad } from './data/types';
+import type { ScenicRoute, ScenicStop } from './data/types';
 import type { LatLng } from './lib/geometry';
+
+/** Bias-slider rows (label per rubric dimension), in display order. */
+const BIAS_ROWS: { key: keyof BiasWeights; label: string; icon: string }[] = [
+  { key: 'curvature', label: 'Twisties', icon: '🌀' },
+  { key: 'scenery', label: 'Scenery', icon: '🌄' },
+  { key: 'greenery', label: 'Greenery', icon: '🌲' },
+  { key: 'water', label: 'Water', icon: '💧' },
+  { key: 'notability', label: 'Notable', icon: '📍' },
+];
 
 type Tab = 'scenic' | 'curated' | 'scanner';
 
@@ -25,7 +35,6 @@ export default function App() {
   const sheet = useBottomSheet();
 
   const [tab, setTab] = useState<Tab>('scenic');
-  const [detail, setDetail] = useState<DetailData | null>(null);
   const [scenicDetail, setScenicDetail] = useState<ScenicRoute | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [activeStopIdx, setActiveStopIdx] = useState<number | null>(null);
@@ -43,8 +52,12 @@ export default function App() {
     Math.abs(scanCenter.lat - defaultLocation.lat) < 1e-4 && Math.abs(scanCenter.lon - defaultLocation.lon) < 1e-4;
 
   const [scanRadius, setScanRadius] = useState(12);
-  const [scanIntensity, setScanIntensity] = useState(6);
-  const [scanResults, setScanResults] = useState<ScannedRoad[]>([]);
+  // Multi-criteria scan: the cached area corpus + the rides built from it under the current bias.
+  const [areaScan, setAreaScan] = useState<AreaScan | null>(null);
+  const [scanRides, setScanRides] = useState<ScenicRoute[]>([]);
+  const [bias, setBias] = useState<BiasWeights>(COMPOSITE_WEIGHTS);
+  const [presetId, setPresetId] = useState('balanced');
+  const [showWeights, setShowWeights] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const scanController = useRef<AbortController | null>(null);
@@ -162,26 +175,40 @@ export default function App() {
     requestAnimationFrame(() => lastScenicFocus.current?.focus());
   }, [map, scenicDetail, showToast]);
 
-  const selectScan = (r: ScannedRoad) => {
-    if (!map) return;
-    const pl = L.polyline(r.coords);
-    map.fitBounds(pl.getBounds(), fitOptions());
-    setDetail({
-      name: r.name, type: 'Measured from OSM', highlights: `Curve density ${r.curveDensity.toFixed(2)}`,
-      score: r.score, sinuosity: r.sinuosity,
-      note: 'Scored purely on measured curvature from OpenStreetMap geometry. No scenery data — scout it on satellite/Street View before committing.',
-      coords: r.coords,
+  // Draw each discovered ride as its own colored line, with a wide invisible "hit" line beneath so
+  // it's easy to tap. Either one opens the same full cruise page the scenic/curated rides use.
+  const drawRides = useCallback((rides: ScenicRoute[]) => {
+    rides.forEach((r) => {
+      const open = () => selectScenic(r);
+      const hit = L.polyline(r.coords, { color: r.color, weight: 18, opacity: 0 });
+      const line = L.polyline(r.coords, { color: r.color, weight: 4, opacity: 0.9 });
+      hit.on('click', open);
+      line.on('click', open);
+      addLayer(hit);
+      addLayer(line);
     });
-    sheet.expand();
-  };
+  }, [addLayer, selectScenic]);
+
+  // Re-rank + redraw from the cached area corpus under a bias — no network. Used both right after a
+  // scan and whenever the rider nudges a bias slider, so weighting changes feel instant.
+  const rebuildRides = useCallback((scan: AreaScan, b: BiasWeights): ScenicRoute[] => {
+    const rides = buildRides(scan.roads, scan.catalog, { bias: b, areaLabel: scanCenter.label });
+    setScanRides(rides);
+    if (map) {
+      clearLayers();
+      drawScanCircle([scan.center[0], scan.center[1]]);
+      drawRides(rides);
+    }
+    return rides;
+  }, [map, clearLayers, drawScanCircle, drawRides, scanCenter.label]);
 
   // --- Location handlers (Scan tab) -------------------------------------------------------
   // Recenter the scan on a chosen place: reset prior results, redraw the radius ring, fly there.
   const recenterScan = useCallback((loc: SavedLocation) => {
     setScanCenter(loc);
-    setScanResults([]);
+    setScanRides([]);
+    setAreaScan(null);
     setHasScanned(false);
-    setDetail(null);
     if (map) {
       clearLayers();
       drawScanCircle([loc.lat, loc.lon]);
@@ -205,27 +232,25 @@ export default function App() {
     if (!map || scanning) return;
     const controller = new AbortController();
     scanController.current = controller;
-    // A wide "all roads" Overpass query can take ~25s when the public servers are busy; give the
-    // lead mirror a full attempt plus room for one fallback before the overall abort.
-    const timeout = setTimeout(() => controller.abort(), 38000);
+    // Two Overpass queries now run in parallel (road network + scenic-feature catalog), each with
+    // its own mirror failover; a wide radius can take ~25-30s when the servers are busy.
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
     setScanning(true);
-    setDetail(null);
     clearLayers();
     drawScanCircle(scanCenterLatLng);
     try {
-      const roads = await scanRoads(scanCenterLatLng, scanRadius, scanIntensity / 10, controller.signal);
-      // Draw every segment; de-clutter the list to one row per named road.
-      roads.slice(0, 60).forEach((r) => {
-        const color = r.score > 70 ? '#10b981' : r.score > 50 ? '#f59e0b' : '#38bdf8';
-        addLayer(L.polyline(r.coords, { color, weight: 4, opacity: 0.85 }));
-      });
-      const listed = dedupeByName(roads).slice(0, 40);
-      setScanResults(listed);
+      const scan = await scanArea(scanCenterLatLng, scanRadius, controller.signal);
+      setAreaScan(scan);
+      const rides = rebuildRides(scan, bias);
+      if (rides.length) {
+        const b = L.latLngBounds(rides.flatMap((r) => r.coords.map((c) => L.latLng(c[0], c[1]))));
+        if (b.isValid()) map.fitBounds(b, fitOptions());
+      }
       showToast(
-        listed.length
-          ? `Found ${listed.length} twisty road${listed.length === 1 ? '' : 's'} near ${scanCenter.label}`
-          : 'No roads above your twistiness threshold — lower it or widen the radius',
+        rides.length
+          ? `Built ${rides.length} ride${rides.length === 1 ? '' : 's'} near ${scanCenter.label} — tap one to explore`
+          : 'No rides here — widen the radius or try a twistier area',
       );
     } catch (e) {
       const kind = e instanceof OverpassError ? e.kind : 'network';
@@ -236,7 +261,8 @@ export default function App() {
             ? 'OpenStreetMap is busy — retry in a moment'
             : 'Scan failed — check your connection',
       );
-      setScanResults([]);
+      setAreaScan(null);
+      setScanRides([]);
     } finally {
       clearTimeout(timeout);
       scanController.current = null;
@@ -247,15 +273,30 @@ export default function App() {
 
   const cancelScan = () => scanController.current?.abort();
 
+  // Nudging a bias slider / preset re-ranks the SAME corpus instantly (no re-query). Skip the very
+  // first run so this doesn't fire before any scan exists.
+  const firstBias = useRef(true);
+  useEffect(() => {
+    if (firstBias.current) { firstBias.current = false; return; }
+    if (tab === 'scanner' && areaScan) rebuildRides(areaScan, bias);
+    // eslint-disable-next-line react-hooks/exhaustive-deps — intentionally keyed on bias only
+  }, [bias]);
+
+  const applyPreset = (p: BiasPreset) => { setPresetId(p.id); setBias(p.weights); };
+  const setWeight = (k: keyof BiasWeights, v: number) => {
+    setPresetId('custom');
+    setBias((prev) => ({ ...prev, [k]: v }));
+  };
+
   const switchTab = (t: Tab) => {
     setTab(t);
-    setDetail(null);
     setScenicDetail(null);
     setReviewOpen(false);
     setActiveStopIdx(null);
     if (t === 'scanner' && map) {
       clearLayers();
       drawScanCircle(scanCenterLatLng);
+      if (scanRides.length) drawRides(scanRides);
       map.setView(scanCenterLatLng, 10);
     }
   };
@@ -395,8 +436,8 @@ export default function App() {
           {tab === 'scanner' && (
             <div className="flex flex-col gap-3 overflow-hidden">
               <div>
-                <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Live road scan</h2>
-                <p className="text-[10px] text-slate-400">Real OSM geometry, scored by measured curvature</p>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Live ride builder</h2>
+                <p className="text-[10px] text-slate-400">Combs the radius for twisties, scenery, greenery, water &amp; notable spots — then stitches rides</p>
               </div>
               <LocationSearch
                 value={scanCenter}
@@ -406,45 +447,87 @@ export default function App() {
                 onSetDefault={handleSetDefault}
                 onUseDefault={handleUseDefault}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col">
-                  <label htmlFor="scan-radius" className="text-[10px] font-bold text-slate-300">Search radius</label>
-                  <input id="scan-radius" type="range" min={5} max={30} value={scanRadius} aria-label="Search radius in kilometers" aria-valuetext={`${scanRadius} kilometers`} onChange={(e) => setScanRadius(+e.target.value)} />
-                  <div className="text-right font-mono text-emerald-400 font-bold text-sm">{scanRadius} km</div>
-                </div>
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col">
-                  <label htmlFor="scan-intensity" className="text-[10px] font-bold text-slate-300">Min twistiness</label>
-                  <input id="scan-intensity" type="range" min={3} max={15} value={scanIntensity} aria-label="Minimum twistiness threshold" aria-valuetext={`${(scanIntensity / 10).toFixed(1)}`} onChange={(e) => setScanIntensity(+e.target.value)} />
-                  <div className="text-right font-mono text-emerald-400 font-bold text-sm">{(scanIntensity / 10).toFixed(1)}</div>
-                </div>
+              <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col">
+                <label htmlFor="scan-radius" className="text-[10px] font-bold text-slate-300">Search radius</label>
+                <input id="scan-radius" type="range" min={5} max={30} value={scanRadius} aria-label="Search radius in kilometers" aria-valuetext={`${scanRadius} kilometers`} onChange={(e) => setScanRadius(+e.target.value)} />
+                <div className="text-right font-mono text-emerald-400 font-bold text-sm">{scanRadius} km</div>
               </div>
-              <button onClick={runScan} disabled={scanning} className="bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-50 disabled:active:scale-100 text-slate-950 font-bold py-3 rounded-xl text-sm shadow-lg transition-all">{scanning ? 'Scanning…' : 'Scan nearby roads'}</button>
-              <div className="overflow-y-auto custom-scrollbar space-y-2" style={{ maxHeight: '30vh' }}>
-                {scanResults.length === 0 ? (
-                  <p className="text-[11px] text-slate-400 italic text-center py-3">{hasScanned ? 'No roads above your twistiness threshold — lower it or widen the radius.' : 'Measures real curve density from OpenStreetMap within your radius. No scenery estimates here — pure geometry.'}</p>
+
+              {/* Bias: one-tap presets + an expandable manual mixer. Changing either re-ranks the
+                  already-scanned corpus instantly — no re-query. */}
+              <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-300">What matters to you</span>
+                  <button onClick={() => setShowWeights((s) => !s)} className="text-[10px] font-bold text-emerald-400 hover:underline py-1">
+                    {showWeights ? 'Hide weights' : 'Adjust weights'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ride bias preset">
+                  {BIAS_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => applyPreset(p)}
+                      aria-pressed={presetId === p.id}
+                      title={p.hint}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${presetId === p.id ? 'bg-emerald-500 text-slate-950 border-emerald-400' : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/40'}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  {presetId === 'custom' && (
+                    <span className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Custom</span>
+                  )}
+                </div>
+                {showWeights && (
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    {BIAS_ROWS.map(({ key, label, icon }) => {
+                      const pct = Math.round(normalizeWeights(bias)[key] * 100);
+                      return (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="w-20 shrink-0 text-[11px] font-semibold text-slate-300">{icon} {label}</span>
+                          <input
+                            type="range" min={0} max={1} step={0.05} value={bias[key]}
+                            aria-label={`${label} importance`} aria-valuetext={`${pct} percent`}
+                            onChange={(e) => setWeight(key, +e.target.value)}
+                            className="flex-1"
+                          />
+                          <span className="w-9 shrink-0 text-right font-mono text-[11px] text-emerald-400">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={runScan} disabled={scanning} className="bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-50 disabled:active:scale-100 text-slate-950 font-bold py-3 rounded-xl text-sm shadow-lg transition-all">{scanning ? 'Building rides…' : 'Scan & build rides'}</button>
+
+              <div className="overflow-y-auto custom-scrollbar space-y-2" style={{ maxHeight: '34vh' }}>
+                {scanRides.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic text-center py-3">{hasScanned ? 'No rides matched here — widen the radius, lighten the bias, or try a twistier area.' : 'Catalogs real roads, water, woods, viewpoints and landmarks in your radius, then stitches rides ranked by your bias. Tap a ride — or its line on the map — for the full review.'}</p>
                 ) : (
-                  scanResults.map((r) => (
-                    <button key={r.id} onClick={() => selectScan(r)} className="w-full flex justify-between items-center p-3 rounded-xl border border-slate-800 bg-slate-900/40 active:scale-[.99] transition-all text-left">
-                      <div className="min-w-0 pr-2">
-                        <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
-                        <p className="text-[10px] text-slate-400 truncate">Curve density {r.curveDensity.toFixed(2)}</p>
+                  scanRides.map((r) => (
+                    <button key={r.id} onClick={(e) => selectScenic(r, e.currentTarget)} aria-current={scenicDetail?.id === r.id ? 'true' : undefined} className={`w-full flex justify-between items-center gap-2 p-3 rounded-xl border active:scale-[.99] transition-all text-left ${scenicDetail?.id === r.id ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-800 bg-slate-900/40'}`}>
+                      <div className="min-w-0 pr-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} aria-hidden />
+                          <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {r.distanceKm} km · 🌀{r.rubric.curvature.toFixed(1)} 💧{r.rubric.water.toFixed(1)} 🌲{r.rubric.greenery.toFixed(1)} 📍{r.rubric.notability.toFixed(1)}</p>
                       </div>
-                      <span className="font-mono text-[13px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded shrink-0">{r.score}</span>
+                      <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{r.score}</span>
                     </button>
                   ))
                 )}
               </div>
             </div>
           )}
-
-          {tab === 'scanner' && <RouteDetail data={detail} origin={scanCenterLatLng} />}
         </div>
       </div>
       </div>
 
-      {/* Full-page review overlay (scenic + curated) */}
-      {browsing && reviewOpen && scenicDetail && (
-        <ScenicRouteReview route={scenicDetail} onBack={closeReview} onLocate={locateStop} origin={homeCenter} />
+      {/* Full-page review overlay — shared by scenic, curated AND scan-built rides */}
+      {reviewOpen && scenicDetail && (
+        <ScenicRouteReview route={scenicDetail} onBack={closeReview} onLocate={locateStop} origin={tab === 'scanner' ? scanCenterLatLng : homeCenter} />
       )}
     </div>
   );

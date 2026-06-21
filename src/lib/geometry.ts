@@ -20,6 +20,17 @@ export function pathLength(coords: LatLng[]): number {
   return d;
 }
 
+/** Initial compass bearing a → b, degrees 0..359 (0 = north). Used to aim a stop's Street View
+ *  camera from the road toward the feature beside it. */
+export function bearing(a: LatLng, b: LatLng): number {
+  const d2r = Math.PI / 180;
+  const y = Math.sin((b[1] - a[1]) * d2r) * Math.cos(b[0] * d2r);
+  const x =
+    Math.cos(a[0] * d2r) * Math.sin(b[0] * d2r) -
+    Math.sin(a[0] * d2r) * Math.cos(b[0] * d2r) * Math.cos((b[1] - a[1]) * d2r);
+  return Math.round((Math.atan2(y, x) / d2r + 360) % 360);
+}
+
 /**
  * Local equirectangular vector from `a` to `b`, with longitude scaled by cos(latitude)
  * so that a degree of longitude and a degree of latitude represent the same ground

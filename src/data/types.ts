@@ -10,6 +10,16 @@ export interface ScannedRoad {
   coords: LatLng[];
 }
 
+/**
+ * A scanned road enriched with the FULL measured rubric — not just curvature, but scenery,
+ * greenery, water and notability MEASURED from nearby OSM features (the same methodology the
+ * build-time scenic pipeline uses, run live in the browser). The Scan tab ranks these by a
+ * user-weighted composite and stitches them into rides.
+ */
+export interface ScoredRoad extends ScannedRoad {
+  rubric: ScenicRubric;
+}
+
 /** A photo-worthy place to stop along a scenic route. */
 export interface ScenicStop {
   lat: number;

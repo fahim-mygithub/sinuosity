@@ -1,6 +1,8 @@
 import type { LatLng } from './geometry';
-import { sinuosityScore } from './geometry';
-import type { ScannedRoad } from '../data/types';
+import { sinuosityScore, curvature10, pathLength, haversine } from './geometry';
+import type { ScannedRoad, ScoredRoad, ScenicRubric } from '../data/types';
+import { fetchFeatureCatalog, type FeatureCatalog } from './features';
+import { measureRubric } from './sceneryTells';
 
 /**
  * Public Overpass mirrors, tried in order. The pool was rebuilt from browser-side probes of the
@@ -40,14 +42,20 @@ export class OverpassError extends Error {
   }
 }
 
-interface OverpassGeomWay {
-  type: 'way';
+/** One Overpass element. Permissive on purpose: roads are ways with `geometry`, but the scenic
+ *  feature catalog (features.ts) also reads nodes (viewpoint/peak — `lat`/`lon`) and relations
+ *  (lake/forest multipolygons — `members[].geometry`). */
+export interface OverpassElement {
+  type: 'node' | 'way' | 'relation';
   id: number;
+  lat?: number;
+  lon?: number;
   geometry?: { lat: number; lon: number }[];
+  members?: { geometry?: { lat: number; lon: number }[] }[];
   tags?: Record<string, string>;
 }
-interface OverpassResponse {
-  elements?: OverpassGeomWay[];
+export interface OverpassResponse {
+  elements?: OverpassElement[];
   remark?: string;
 }
 
@@ -58,7 +66,7 @@ interface OverpassResponse {
  * On a recoverable failure it advances to the next mirror; a client abort stops
  * immediately (the user/timeout cancelled).
  */
-async function fetchOverpass(query: string, signal?: AbortSignal): Promise<OverpassResponse> {
+export async function fetchOverpass(query: string, signal?: AbortSignal): Promise<OverpassResponse> {
   let lastErr: OverpassError | null = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
@@ -118,7 +126,7 @@ async function fetchOverpass(query: string, signal?: AbortSignal): Promise<Overp
 
 /** Parse Overpass `out geom` ways into scored roads. No threshold filter — that is applied
  * at return time so a cached corpus can be re-filtered by twistiness with no new query. */
-function parseRoads(elements: OverpassGeomWay[]): ScannedRoad[] {
+function parseRoads(elements: OverpassElement[]): ScannedRoad[] {
   const roads: ScannedRoad[] = [];
   for (const el of elements) {
     if (el.type !== 'way' || !el.geometry) continue;
@@ -188,6 +196,93 @@ export async function scanRoads(
   return corpus
     .filter((r) => r.curveDensity >= minSinuosity)
     .sort((a, b) => b.score - a.score);
+}
+
+/** The full result of a multi-criteria area scan: every candidate road with its MEASURED rubric,
+ *  plus the scenic-feature catalog used to build rides and place stops. */
+export interface AreaScan {
+  roads: ScoredRoad[];
+  catalog: FeatureCatalog;
+  center: LatLng;
+  radiusKm: number;
+}
+
+const areaCache = new Map<string, AreaScan>();
+
+/** Drop cached area scans (tests; harmless at runtime). */
+export function clearAreaCache(): void {
+  areaCache.clear();
+}
+
+/**
+ * Multi-criteria scan: pull the road network AND the scenic-feature catalog (water, woods,
+ * viewpoints, peaks, notable places) within `radiusKm`, then MEASURE the full scenery rubric for
+ * each candidate road from those features — the same methodology the build-time pipeline uses,
+ * run live. Curvature alone no longer decides the score; the caller re-ranks by a user-weighted
+ * composite and stitches rides without re-querying.
+ *
+ * The rubric pass is O(roads × samples × tells), so the candidate set is bounded to the roads
+ * worth riding (real length, some curve) and capped — keeping the browser responsive on a wide
+ * radius. The whole result is cached per center+radius so bias-slider changes never re-hit OSM.
+ */
+export async function scanArea(
+  center: LatLng,
+  radiusKm: number,
+  signal?: AbortSignal,
+): Promise<AreaScan> {
+  const key = `${center[0].toFixed(4)},${center[1].toFixed(4)},${radiusKm}`;
+  const cached = areaCache.get(key);
+  if (cached) {
+    areaCache.delete(key);
+    areaCache.set(key, cached);
+    return cached;
+  }
+
+  const radiusM = Math.round(radiusKm * 1000);
+  const roadQuery =
+    `[out:json][timeout:${SERVER_TIMEOUT_S}];` +
+    `way["highway"~"^(secondary|tertiary|unclassified)$"](around:${radiusM},${center[0]},${center[1]});` +
+    `out geom;`;
+
+  // Roads and scenic features in parallel — two Overpass calls, each with its own mirror failover.
+  const [roadData, catalog] = await Promise.all([
+    fetchOverpass(roadQuery, signal),
+    fetchFeatureCatalog(center, radiusKm, signal),
+  ]);
+
+  const corpus = parseRoads(roadData.elements ?? []);
+  // Bound the rubric pass: only score roads with real length and at least a hint of curve, capped
+  // to the strongest candidates. (Ruler-straight grid roads are almost never the ride you want.)
+  const candidates = corpus
+    .filter((r) => pathLength(r.coords) >= 0.5 && r.curveDensity >= 0.12)
+    .sort((a, b) => b.curveDensity - a.curveDensity)
+    .slice(0, 300);
+
+  const viewPts = catalog.tells.view;
+  const roads: ScoredRoad[] = candidates.map((r) => {
+    // viewMinM (nearest viewpoint to this road) lifts notability when a viewpoint sits on the road.
+    let viewMinM = Infinity;
+    for (const c of r.coords) {
+      for (const v of viewPts) {
+        const d = haversine(c, v) * 1000;
+        if (d < viewMinM) viewMinM = d;
+      }
+    }
+    const m = measureRubric(r.coords, { ...catalog.tells, viewMinM });
+    const rubric: ScenicRubric = {
+      curvature: curvature10(r.coords),
+      scenery: m.scenery,
+      greenery: m.greenery,
+      water: m.water,
+      notability: m.notability,
+    };
+    return { ...r, rubric };
+  });
+
+  const result: AreaScan = { roads, catalog, center, radiusKm };
+  areaCache.set(key, result);
+  if (areaCache.size > SCAN_CACHE_CAP) areaCache.delete(areaCache.keys().next().value!);
+  return result;
 }
 
 /**
