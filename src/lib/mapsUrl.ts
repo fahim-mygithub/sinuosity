@@ -1,48 +1,82 @@
 import type { LatLng } from './geometry';
-import { sharpestTurnIndices } from './geometry';
+import { haversine } from './geometry';
 
 const HOME: LatLng = [42.9808, -78.7441];
-const MOBILE_WAYPOINT_CAP = 3; // Google Maps URLs API caps mobile browsers at 3 waypoints
+
+// Google's Maps URLs API (api=1) honors at most 3 waypoints when the link opens in a MOBILE
+// browser, and up to 9 on desktop:
+// https://developers.google.com/maps/documentation/urls/get-started
+// We pack as many as the platform allows so Google can't "optimize" a long gap between sparse
+// waypoints onto a parallel expressway (the Letchworth-rim → I-390 leak).
+const MOBILE_WAYPOINT_CAP = 3;
+const DESKTOP_WAYPOINT_CAP = 9;
 
 const isValid = (p: LatLng): boolean =>
   Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
 
 const fmt = (p: LatLng) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
 
-/**
- * Pick up to `max` route-defining waypoints. Strategy 'sharp' picks the sharpest
- * turns (keeps you on the twisty road); 'even' samples at equal intervals.
- */
-export function pickWaypoints(
-  coords: LatLng[],
-  max = MOBILE_WAYPOINT_CAP,
-  strategy: 'sharp' | 'even' = 'sharp',
-): LatLng[] {
-  const mids = coords.slice(1, -1);
-  if (!mids.length) return [];
-
-  if (strategy === 'sharp') {
-    // sharpestTurnIndices works on the full coords array; offset by -1 not needed
-    // because we pass full coords and filter to interior points.
-    const idxs = sharpestTurnIndices(coords, max).filter((i) => i > 0 && i < coords.length - 1);
-    return idxs.map((i) => coords[i]);
-  }
-
-  const wp: LatLng[] = [];
-  const step = Math.max(1, Math.floor(mids.length / max));
-  for (let i = 0; i < mids.length && wp.length < max; i += step) wp.push(mids[i]);
-  return wp;
+/** True when running in a mobile browser (where Google caps the deep-link at 3 waypoints). */
+export function isMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 }
 
-/** Google Maps directions URL using the documented Maps URLs API (api=1). */
+/**
+ * Up to `max` interior waypoints spaced evenly by ARC LENGTH along the route. Even spacing is
+ * deliberate: it bounds the LARGEST gap between consecutive stops, and a small max-gap is what
+ * stops Google re-routing a gap onto a faster parallel road. Picking the N *sharpest* turns
+ * instead can cluster them on one bend and leave a 6 km+ gap elsewhere — exactly how the
+ * Letchworth Gorge Rim route leaked onto the I-390 expressway between waypoints.
+ */
+export function pickWaypoints(coords: LatLng[], max: number): LatLng[] {
+  const interior = coords.length - 2;
+  if (max <= 0 || interior <= 0) return [];
+  const n = Math.min(max, interior);
+
+  // cumulative arc length at each vertex
+  const cum: number[] = new Array(coords.length);
+  cum[0] = 0;
+  for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1] + haversine(coords[i - 1], coords[i]);
+  const total = cum[coords.length - 1];
+  if (!(total > 0)) return [];
+
+  const picked: number[] = [];
+  const seen = new Set<number>();
+  for (let k = 1; k <= n; k++) {
+    const target = (total * k) / (n + 1); // even fractions of the route's length
+    let best = 1;
+    let bestD = Infinity;
+    for (let i = 1; i <= coords.length - 2; i++) {
+      const d = Math.abs(cum[i] - target);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (!seen.has(best)) {
+      seen.add(best);
+      picked.push(best);
+    }
+  }
+  picked.sort((a, b) => a - b); // keep route order
+  return picked.map((i) => coords[i]);
+}
+
+/**
+ * Google Maps directions URL using the documented Maps URLs API (api=1). The waypoint cap is
+ * platform-aware (mobile 3 / desktop 9) unless `maxWaypoints` is given. More, evenly-spaced
+ * waypoints keep Google on the actual scenic geometry instead of shortcutting to an expressway.
+ */
 export function googleMapsUrl(
   coords: LatLng[],
-  opts: { origin?: LatLng; strategy?: 'sharp' | 'even' } = {},
+  opts: { origin?: LatLng; maxWaypoints?: number } = {},
 ): string {
   const valid = coords.filter(isValid);
   const origin = opts.origin && isValid(opts.origin) ? opts.origin : HOME;
   const dest = valid[valid.length - 1] ?? origin;
-  const wp = pickWaypoints(valid, MOBILE_WAYPOINT_CAP, opts.strategy ?? 'sharp');
+  const cap = opts.maxWaypoints ?? (isMobileBrowser() ? MOBILE_WAYPOINT_CAP : DESKTOP_WAYPOINT_CAP);
+  const wp = pickWaypoints(valid, cap);
 
   const params = new URLSearchParams({
     api: '1',

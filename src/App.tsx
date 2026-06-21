@@ -48,8 +48,24 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const scanController = useRef<AbortController | null>(null);
+  // Live handle on the dashed scan-radius ring so the slider can resize it in place.
+  const scanCircleRef = useRef<L.Circle | null>(null);
 
   const showToast = useCallback((m: string) => setToast(m), []);
+
+  // Draw (or replace) the scan-radius ring at `center`, keeping a handle so the radius slider
+  // can grow/shrink it live without a re-scan. Call AFTER clearLayers() so it isn't wiped.
+  const drawScanCircle = useCallback((center: LatLng) => {
+    const circle = L.circle(center, { ...SCAN_CIRCLE, radius: scanRadius * 1000 });
+    scanCircleRef.current = circle;
+    addLayer(circle);
+  }, [addLayer, scanRadius]);
+
+  // Resize the ring in place as the slider moves (no clear, no re-scan) so the on-map circle
+  // always matches the "{n} km" readout.
+  useEffect(() => {
+    if (tab === 'scanner') scanCircleRef.current?.setRadius(scanRadius * 1000);
+  }, [scanRadius, tab]);
 
   // fitBounds padding that keeps the drawn route clear of the panel (left dock on
   // desktop, bottom sheet on mobile) and the floating header/status chrome.
@@ -168,11 +184,11 @@ export default function App() {
     setDetail(null);
     if (map) {
       clearLayers();
-      addLayer(L.circle([loc.lat, loc.lon], { ...SCAN_CIRCLE, radius: scanRadius * 1000 }));
+      drawScanCircle([loc.lat, loc.lon]);
       map.setView([loc.lat, loc.lon], 10);
     }
     showToast(`Scan centered on ${loc.label}`);
-  }, [map, clearLayers, addLayer, scanRadius, showToast]);
+  }, [map, clearLayers, drawScanCircle, showToast]);
 
   const handleSetDefault = useCallback(() => {
     if (saveDefaultLocation(scanCenter)) {
@@ -194,7 +210,7 @@ export default function App() {
     setScanning(true);
     setDetail(null);
     clearLayers();
-    addLayer(L.circle(scanCenterLatLng, { ...SCAN_CIRCLE, radius: scanRadius * 1000 }));
+    drawScanCircle(scanCenterLatLng);
     try {
       const roads = await scanRoads(scanCenterLatLng, scanRadius, scanIntensity / 10, controller.signal);
       // Draw every segment; de-clutter the list to one row per named road.
@@ -237,7 +253,7 @@ export default function App() {
     setActiveStopIdx(null);
     if (t === 'scanner' && map) {
       clearLayers();
-      addLayer(L.circle(scanCenterLatLng, { ...SCAN_CIRCLE, radius: scanRadius * 1000 }));
+      drawScanCircle(scanCenterLatLng);
       map.setView(scanCenterLatLng, 10);
     }
   };
