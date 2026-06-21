@@ -3,14 +3,20 @@ import { sinuosityScore } from './geometry';
 import type { ScannedRoad } from '../data/types';
 
 /**
- * Public Overpass mirrors, tried in order. overpass-api.de is the most reliable
- * primary; the others are fallbacks for when it is overloaded. The client times out
- * the whole attempt sequence via the caller's AbortSignal.
+ * Public Overpass mirrors, tried in order. The pool was rebuilt from browser-side probes of the
+ * deployed origin: overpass-api.de and overpass.openstreetmap.fr both answer fast WITH CORS, so
+ * they lead as the two reliable, planet-wide instances. (overpass.osm.ch is CORS-OK but only
+ * serves Switzerland; maps.mail.ru works but is VK-hosted — both excluded.) kumi.systems and
+ * private.coffee are kept only as tail fallbacks because they were unreachable from the app's
+ * network at last check, but recover on other days/networks. The earlier failure mode was real:
+ * the previous pool [de, kumi, private.coffee] had TWO dead mirrors, so when de got busy the
+ * "failover" hit nothing. The client bounds the whole sequence via the caller's AbortSignal.
  */
 const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass-api.de/api/interpreter', // canonical, highest capacity — verified fast w/ CORS
+  'https://overpass.openstreetmap.fr/api/interpreter', // OSM-France — verified working fallback
+  'https://overpass.kumi.systems/api/interpreter', // community mirror (intermittent from some nets)
+  'https://overpass.private.coffee/api/interpreter', // no-rate-limit instance (intermittent)
 ];
 
 /** Server-side query budget (seconds). Kept tight so a stuck query fails fast. */
@@ -20,10 +26,10 @@ const SERVER_TIMEOUT_S = 15;
  * Per-mirror connection budget (ms). The public Overpass instances are frequently overloaded;
  * without this, one slow/stalled mirror consumes the caller's entire timeout before the next
  * mirror is even tried (the spinner appears to "hang"). With it, a stalled mirror is abandoned
- * quickly and we fail over — so a healthy mirror in the pool still answers fast. 3 mirrors × 8s
+ * quickly and we fail over — so a healthy mirror in the pool still answers fast. 4 mirrors × 6s
  * stays under the caller's ~25s overall budget, so every mirror gets a turn.
  */
-const PER_MIRROR_TIMEOUT_MS = 8000;
+const PER_MIRROR_TIMEOUT_MS = 6000;
 
 export class OverpassError extends Error {
   constructor(message: string, public kind: 'timeout' | 'http' | 'network' | 'empty') {
@@ -108,13 +114,50 @@ async function fetchOverpass(query: string, signal?: AbortSignal): Promise<Overp
   throw lastErr ?? new OverpassError('All Overpass mirrors are unavailable', 'network');
 }
 
+/** Parse Overpass `out geom` ways into scored roads. No threshold filter — that is applied
+ * at return time so a cached corpus can be re-filtered by twistiness with no new query. */
+function parseRoads(elements: OverpassGeomWay[]): ScannedRoad[] {
+  const roads: ScannedRoad[] = [];
+  for (const el of elements) {
+    if (el.type !== 'way' || !el.geometry) continue;
+    const pts: LatLng[] = el.geometry.map((g) => [g.lat, g.lon] as LatLng);
+    if (pts.length <= 3) continue;
+
+    const s = sinuosityScore(pts);
+    roads.push({
+      id: `scan-${el.id}`,
+      name: el.tags?.name ?? 'Unnamed road',
+      curveDensity: s,
+      sinuosity: Math.min(10, s * 4),
+      score: Math.min(100, Math.round(s * 30)),
+      coords: pts,
+    });
+  }
+  return roads;
+}
+
+/**
+ * In-memory cache of the full (unfiltered) road corpus per query, keyed by center+radius. This
+ * makes "always busy" stop mattering for anywhere you've already scanned this session: a repeat
+ * scan — or a change to the twistiness threshold (which only re-filters, never re-queries) —
+ * returns instantly with zero network. Bounded so a long session can't grow it without limit.
+ */
+const scanCache = new Map<string, ScannedRoad[]>();
+const SCAN_CACHE_CAP = 16;
+
+/** Drop all cached scans (used by tests; harmless to call at runtime). */
+export function clearScanCache(): void {
+  scanCache.clear();
+}
+
 /**
  * Scan secondary/tertiary/unclassified roads within `radiusKm` of a center point,
  * scoring each by measured curvature. Pure geometry — no scenery estimates here.
  *
  * Uses `out geom;` (inline geometry) instead of `out body;>;` node recursion — this
  * is dramatically lighter on the server and completes where the recursive query
- * times out, while returning the same polylines.
+ * times out, while returning the same polylines. The unfiltered corpus is cached
+ * per center+radius so repeat scans / threshold changes don't re-hit Overpass.
  */
 export async function scanRoads(
   center: LatLng,
@@ -128,30 +171,21 @@ export async function scanRoads(
     `way["highway"~"^(secondary|tertiary|unclassified)$"](around:${radiusM},${center[0]},${center[1]});` +
     `out geom;`;
 
-  const data = await fetchOverpass(query, signal);
-  const elements = data.elements ?? [];
-
-  const roads: ScannedRoad[] = [];
-  for (const el of elements) {
-    if (el.type !== 'way' || !el.geometry) continue;
-    const pts: LatLng[] = el.geometry.map((g) => [g.lat, g.lon] as LatLng);
-    if (pts.length <= 3) continue;
-
-    const s = sinuosityScore(pts);
-    if (s < minSinuosity) continue;
-
-    roads.push({
-      id: `scan-${el.id}`,
-      name: el.tags?.name ?? 'Unnamed road',
-      curveDensity: s,
-      sinuosity: Math.min(10, s * 4),
-      score: Math.min(100, Math.round(s * 30)),
-      coords: pts,
-    });
+  let corpus = scanCache.get(query);
+  if (corpus) {
+    // Refresh recency (cheap LRU) so a hot area survives eviction.
+    scanCache.delete(query);
+    scanCache.set(query, corpus);
+  } else {
+    const data = await fetchOverpass(query, signal);
+    corpus = parseRoads(data.elements ?? []);
+    scanCache.set(query, corpus);
+    if (scanCache.size > SCAN_CACHE_CAP) scanCache.delete(scanCache.keys().next().value!);
   }
 
-  roads.sort((a, b) => b.score - a.score);
-  return roads;
+  return corpus
+    .filter((r) => r.curveDensity >= minSinuosity)
+    .sort((a, b) => b.score - a.score);
 }
 
 /**

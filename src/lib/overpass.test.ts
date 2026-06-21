@@ -1,8 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { scanRoads, dedupeByName, OverpassError } from './overpass';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { scanRoads, dedupeByName, OverpassError, clearScanCache } from './overpass';
 import type { ScannedRoad } from '../data/types';
 
 const HOME: [number, number] = [42.9808, -78.7441];
+
+// The scan corpus is cached per center+radius across calls; clear it so each test queries fresh.
+beforeEach(() => clearScanCache());
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return {
@@ -42,7 +45,7 @@ describe('scanRoads error handling', () => {
   it('throws http after all mirrors return non-ok', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({}, false, 504));
     await expect(scanRoads(HOME, 10, 0.3)).rejects.toMatchObject({ kind: 'http' });
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(3); // tried every mirror
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(4); // tried every mirror
   });
 
   it('throws network when every mirror fetch rejects', async () => {
@@ -110,6 +113,21 @@ describe('scanRoads geometry handling', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ elements: [ZIGZAG_WAY] }));
     const roads = await scanRoads(HOME, 10, 99); // impossibly high threshold
     expect(roads).toEqual([]);
+  });
+});
+
+describe('scanRoads caching', () => {
+  it('serves a repeat scan from cache, re-filtering by threshold with no new fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ elements: [ZIGZAG_WAY] }));
+    globalThis.fetch = fetchMock;
+
+    const first = await scanRoads(HOME, 12, 0.1);
+    expect(first).toHaveLength(1);
+
+    // Same center+radius, impossibly high threshold → filtered to none, but NO second network hit.
+    const second = await scanRoads(HOME, 12, 99);
+    expect(second).toEqual([]);
+    expect(fetchMock.mock.calls.length).toBe(1); // corpus reused from cache
   });
 });
 
