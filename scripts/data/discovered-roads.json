@@ -11,15 +11,15 @@
     "total": 18,
     "ok": 18
   },
-  "wayCount": 36001,
-  "roadCount": 1802,
+  "wayCount": 21546,
+  "roadCount": 1463,
   "benchmark": [
     {
       "label": "NY-242 Ellicottville–Mansfield",
       "found": true,
-      "rank": 650,
+      "rank": 939,
       "value": 339,
-      "tier": "pleasant"
+      "tier": "mild"
     },
     {
       "label": "US-219 spine",
@@ -28,88 +28,66 @@
     {
       "label": "NY-240 Ashford \"dips and waves\"",
       "found": true,
-      "rank": 13,
-      "value": 3486,
-      "tier": "excellent"
+      "rank": 4,
+      "value": 3672,
+      "tier": "pleasant"
     },
     {
       "label": "NY-39 Zoar/Java",
       "found": true,
-      "rank": 126,
-      "value": 1323,
-      "tier": "excellent"
+      "rank": 499,
+      "value": 447,
+      "tier": "mild"
     },
     {
       "label": "NY-353 Amish Trail",
       "found": true,
-      "rank": 198,
+      "rank": 404,
       "value": 991,
-      "tier": "pleasant"
+      "tier": "mild"
     },
     {
       "label": "NY-394 Chautauqua W",
       "found": true,
-      "rank": 34,
+      "rank": 129,
       "value": 2392,
-      "tier": "excellent"
+      "tier": "mild"
     },
     {
       "label": "NY-430 Chautauqua E",
       "found": true,
-      "rank": 132,
+      "rank": 415,
       "value": 1290,
-      "tier": "excellent"
+      "tier": "mild"
     },
     {
       "label": "NY-64 Bristol Hills",
       "found": true,
-      "rank": 256,
+      "rank": 536,
       "value": 803,
-      "tier": "pleasant"
+      "tier": "mild"
     },
     {
       "label": "NY-16 Holland",
       "found": true,
-      "rank": 44,
-      "value": 2157,
-      "tier": "excellent"
+      "rank": 163,
+      "value": 2279,
+      "tier": "mild"
     },
     {
       "label": "Letchworth Park Road",
       "found": true,
-      "rank": 335,
-      "value": 663,
-      "tier": "pleasant"
+      "rank": 239,
+      "value": 384,
+      "tier": "excellent"
     }
   ],
+  "rankKey": "min(perKm,120)*sqrt(lengthKm)",
   "corridors": [
-    {
-      "ref": "20",
-      "name": "Haldimand Road 20",
-      "value": 5812,
-      "perKm": 66.7,
-      "lengthKm": 87.2,
-      "tier": "excellent",
-      "sample": [
-        42.9067483,
-        -79.7064759
-      ]
-    },
-    {
-      "ref": null,
-      "name": "Park Road",
-      "value": 5526,
-      "perKm": 173.9,
-      "lengthKm": 31.8,
-      "tier": "excellent",
-      "sample": [
-        42.099256,
-        -78.740195
-      ]
-    },
     {
       "ref": "CR 21",
       "name": "Elton Road",
+      "rankScore": 711.3,
       "value": 5511,
       "perKm": 91.8,
       "lengthKm": 60,
@@ -120,120 +98,39 @@
       ]
     },
     {
-      "ref": "US 62",
-      "name": "Ivory Road",
-      "value": 5131,
-      "perKm": 34.6,
-      "lengthKm": 148.5,
-      "tier": "excellent",
-      "sample": [
-        42.064001,
-        -79.145149
-      ]
-    },
-    {
       "ref": null,
-      "name": "North Service Road",
-      "value": 4508,
-      "perKm": 167.4,
-      "lengthKm": 26.9,
+      "name": "Park Road",
+      "rankScore": 676.5,
+      "value": 5526,
+      "perKm": 173.9,
+      "lengthKm": 31.8,
       "tier": "excellent",
       "sample": [
-        43.3378108,
-        -79.832977
+        42.099256,
+        -78.740195
       ]
     },
     {
-      "ref": null,
-      "name": "Niagara Parkway",
-      "value": 4366,
-      "perKm": 114.9,
-      "lengthKm": 38,
-      "tier": "excellent",
+      "ref": "CR 29",
+      "name": "Barnum Road",
+      "rankScore": 533.2,
+      "value": 3232,
+      "perKm": 88,
+      "lengthKm": 36.7,
+      "tier": "pleasant",
       "sample": [
-        42.9729908,
-        -79.0085375
-      ]
-    },
-    {
-      "ref": "CR 457A",
-      "name": "Zoar Valley Road",
-      "value": 4236,
-      "perKm": 265.9,
-      "lengthKm": 15.9,
-      "tier": "excellent",
-      "sample": [
-        42.487989,
-        -78.716691
-      ]
-    },
-    {
-      "ref": "81",
-      "name": "Main Street East",
-      "value": 4043,
-      "perKm": 88.6,
-      "lengthKm": 45.6,
-      "tier": "excellent",
-      "sample": [
-        43.1924911,
-        -79.5596609
-      ]
-    },
-    {
-      "ref": "CR 1",
-      "name": "County Road 1",
-      "value": 3823,
-      "perKm": 49.5,
-      "lengthKm": 77.2,
-      "tier": "excellent",
-      "sample": [
-        42.136978,
-        -78.239576
-      ]
-    },
-    {
-      "ref": "NY 5",
-      "name": "West Lake Road",
-      "value": 3548,
-      "perKm": 18.5,
-      "lengthKm": 191.5,
-      "tier": "excellent",
-      "sample": [
-        42.2675523,
-        -79.761888
-      ]
-    },
-    {
-      "ref": "NY 19",
-      "name": "West Main Street",
-      "value": 3490,
-      "perKm": 21,
-      "lengthKm": 166,
-      "tier": "excellent",
-      "sample": [
-        42.465745,
-        -78.112175
-      ]
-    },
-    {
-      "ref": "CR 14",
-      "name": "Toad Hollow",
-      "value": 3488,
-      "perKm": 65.7,
-      "lengthKm": 53.1,
-      "tier": "excellent",
-      "sample": [
-        42.259588,
-        -78.809365
+        42.029258,
+        -78.441766
       ]
     },
     {
       "ref": "NY 240",
       "name": "Davis Road",
-      "value": 3486,
-      "perKm": 64.4,
-      "lengthKm": 54.1,
-      "tier": "excellent",
+      "rankScore": 498.6,
+      "value": 3672,
+      "perKm": 67.7,
+      "lengthKm": 54.2,
+      "tier": "pleasant",
       "sample": [
         42.7229256,
         -78.6803274
@@ -242,6 +139,7 @@
     {
       "ref": null,
       "name": "ASP Route 1",
+      "rankScore": 479.9,
       "value": 3337,
       "perKm": 208.7,
       "lengthKm": 16,
@@ -252,84 +150,143 @@
       ]
     },
     {
-      "ref": "CR 29",
-      "name": "Barnum Road",
-      "value": 3232,
-      "perKm": 88,
-      "lengthKm": 36.7,
+      "ref": "CR 457A",
+      "name": "Zoar Valley Road",
+      "rankScore": 479,
+      "value": 4236,
+      "perKm": 265.9,
+      "lengthKm": 15.9,
       "tier": "excellent",
       "sample": [
-        42.029258,
-        -78.441766
+        42.487989,
+        -78.716691
       ]
     },
     {
-      "ref": "CR 6",
-      "name": "Cherry Creek Hill Road",
-      "value": 3050,
-      "perKm": 31.8,
-      "lengthKm": 96,
-      "tier": "excellent",
+      "ref": "CR 14",
+      "name": "Toad Hollow",
+      "rankScore": 478.6,
+      "value": 3488,
+      "perKm": 65.7,
+      "lengthKm": 53.1,
+      "tier": "pleasant",
       "sample": [
-        42.292988,
-        -79.04593
+        42.259588,
+        -78.809365
       ]
     },
     {
-      "ref": "3",
-      "name": "Lakeshore Road",
-      "value": 2981,
-      "perKm": 27.4,
-      "lengthKm": 108.7,
-      "tier": "excellent",
+      "ref": "CR 74",
+      "name": "Gowanda Zoar Road",
+      "rankScore": 471,
+      "value": 2757,
+      "perKm": 80.5,
+      "lengthKm": 34.2,
+      "tier": "pleasant",
       "sample": [
-        42.8660428,
-        -79.3857948
+        42.456606,
+        -78.838876
       ]
     },
     {
-      "ref": "CR 12",
-      "name": "Otto Road",
-      "value": 2931,
-      "perKm": 43.2,
-      "lengthKm": 67.8,
+      "ref": "CR 70",
+      "name": "County Route 70",
+      "rankScore": 461.6,
+      "value": 1996,
+      "perKm": 106.7,
+      "lengthKm": 18.7,
       "tier": "excellent",
       "sample": [
-        42.334258,
-        -78.852807
+        42.368161,
+        -77.508307
       ]
     },
     {
-      "ref": "CR 31",
-      "name": "Middaugh hill road",
-      "value": 2843,
-      "perKm": 47,
-      "lengthKm": 60.5,
+      "ref": "CR 118",
+      "name": "Colvin Boulevard",
+      "rankScore": 457,
+      "value": 2089,
+      "perKm": 144,
+      "lengthKm": 14.5,
       "tier": "excellent",
       "sample": [
-        42.170791,
-        -77.988328
+        42.9586559,
+        -78.8586638
       ]
     },
     {
-      "ref": "CR 2",
-      "name": "Edwards Corners Road",
-      "value": 2787,
-      "perKm": 30.4,
-      "lengthKm": 91.6,
+      "ref": "NY 384",
+      "name": "Delaware Avenue",
+      "rankScore": 451.1,
+      "value": 2228,
+      "perKm": 91.3,
+      "lengthKm": 24.4,
       "tier": "excellent",
       "sample": [
-        42.423613,
-        -79.0316589
+        42.8870752,
+        -78.8779446
+      ]
+    },
+    {
+      "ref": null,
+      "name": "County Route 2",
+      "rankScore": 434.4,
+      "value": 1610,
+      "perKm": 117.2,
+      "lengthKm": 13.7,
+      "tier": "excellent",
+      "sample": [
+        42.110703,
+        -77.264205
+      ]
+    },
+    {
+      "ref": "US 62",
+      "name": "Ivory Road",
+      "rankScore": 423.2,
+      "value": 5157,
+      "perKm": 34.7,
+      "lengthKm": 148.7,
+      "tier": "mild",
+      "sample": [
+        42.064001,
+        -79.145149
+      ]
+    },
+    {
+      "ref": "CR 1",
+      "name": "County Road 1",
+      "rankScore": 423,
+      "value": 3841,
+      "perKm": 46.6,
+      "lengthKm": 82.4,
+      "tier": "mild",
+      "sample": [
+        42.136978,
+        -78.239576
+      ]
+    },
+    {
+      "ref": null,
+      "name": "Sawmill Run Road",
+      "rankScore": 421.1,
+      "value": 1527,
+      "perKm": 116.1,
+      "lengthKm": 13.2,
+      "tier": "excellent",
+      "sample": [
+        42.1601579,
+        -78.8134074
       ]
     },
     {
       "ref": "CR 24",
       "name": "Lyndon Road",
+      "rankScore": 414.8,
       "value": 2770,
       "perKm": 62.1,
       "lengthKm": 44.6,
-      "tier": "excellent",
+      "tier": "pleasant",
       "sample": [
         42.310434,
         -78.41645
@@ -337,110 +294,184 @@
     },
     {
       "ref": null,
-      "name": "Rymal Road East",
-      "value": 2767,
-      "perKm": 392.2,
-      "lengthKm": 7.1,
+      "name": "Creek Road",
+      "rankScore": 411.1,
+      "value": 1552,
+      "perKm": 108.9,
+      "lengthKm": 14.3,
       "tier": "excellent",
       "sample": [
-        43.1842166,
-        -79.8211213
+        41.998698,
+        -79.295559
       ]
     },
     {
-      "ref": "CR 74",
-      "name": "Gowanda Zoar Road",
-      "value": 2757,
-      "perKm": 80.5,
-      "lengthKm": 34.2,
+      "ref": null,
+      "name": "County Route 12",
+      "rankScore": 411.1,
+      "value": 1490,
+      "perKm": 127,
+      "lengthKm": 11.7,
       "tier": "excellent",
       "sample": [
-        42.456606,
-        -78.838876
+        42.222703,
+        -77.264251
       ]
     },
     {
-      "ref": "40",
-      "name": "South Service Road",
-      "value": 2750,
-      "perKm": 98.8,
-      "lengthKm": 27.8,
+      "ref": "CR69",
+      "name": "County Route 69",
+      "rankScore": 410.1,
+      "value": 1664,
+      "perKm": 142.5,
+      "lengthKm": 11.7,
       "tier": "excellent",
       "sample": [
-        43.2045887,
-        -79.5868054
+        42.291577,
+        -77.509149
       ]
     },
     {
-      "ref": "CR 7",
-      "name": "Pigeon Valley Road",
-      "value": 2644,
-      "perKm": 40.6,
-      "lengthKm": 65.2,
+      "ref": null,
+      "name": "South Parkway",
+      "rankScore": 394.5,
+      "value": 1826,
+      "perKm": 168.9,
+      "lengthKm": 10.8,
       "tier": "excellent",
       "sample": [
-        42.26232,
-        -78.852375
+        42.9629894,
+        -78.958899
+      ]
+    },
+    {
+      "ref": "CR 85",
+      "name": "Bennett State Road",
+      "rankScore": 388,
+      "value": 2229,
+      "perKm": 67.5,
+      "lengthKm": 33,
+      "tier": "pleasant",
+      "sample": [
+        42.475709,
+        -79.172134
       ]
     },
     {
       "ref": "CR 8",
       "name": "Bowen Road",
+      "rankScore": 385.1,
       "value": 2628,
       "perKm": 56.4,
       "lengthKm": 46.6,
-      "tier": "excellent",
+      "tier": "pleasant",
       "sample": [
         42.129463,
         -79.015653
       ]
     },
     {
-      "ref": "8",
-      "name": "Kohler Road",
-      "value": 2510,
-      "perKm": 92.4,
-      "lengthKm": 27.2,
-      "tier": "excellent",
+      "ref": "CR 75",
+      "name": "Mill Valley Road",
+      "rankScore": 383.6,
+      "value": 2446,
+      "perKm": 60.2,
+      "lengthKm": 40.6,
+      "tier": "pleasant",
       "sample": [
-        42.8296706,
-        -79.8371609
-      ]
-    },
-    {
-      "ref": "CR 46",
-      "name": "Rushford Road",
-      "value": 2502,
-      "perKm": 48.7,
-      "lengthKm": 51.4,
-      "tier": "excellent",
-      "sample": [
-        42.343916,
-        -78.426437
+        42.3727608,
+        -78.7104903
       ]
     },
     {
       "ref": null,
-      "name": "Eastview Mall Drive",
-      "value": 2478,
-      "perKm": 826.9,
-      "lengthKm": 3,
+      "name": "County Route 6",
+      "rankScore": 382.5,
+      "value": 1237,
+      "perKm": 118.2,
+      "lengthKm": 10.5,
       "tier": "excellent",
       "sample": [
-        43.0257596,
-        -77.4400808
+        42.424563,
+        -77.562823
       ]
     },
     {
-      "ref": "CR 75",
-      "name": "Mill Valley Road",
-      "value": 2446,
-      "perKm": 60.2,
-      "lengthKm": 40.6,
+      "ref": null,
+      "name": "New Oregon Road",
+      "rankScore": 382.1,
+      "value": 1244,
+      "perKm": 117.4,
+      "lengthKm": 10.6,
       "tier": "excellent",
       "sample": [
-        42.3727608,
-        -78.7104903
+        42.6200537,
+        -78.8310972
+      ]
+    },
+    {
+      "ref": "CR 27",
+      "name": "Haskell Road",
+      "rankScore": 381.4,
+      "value": 2407,
+      "perKm": 60.4,
+      "lengthKm": 39.9,
+      "tier": "pleasant",
+      "sample": [
+        42.066903,
+        -78.384898
+      ]
+    },
+    {
+      "ref": null,
+      "name": "County Road 24",
+      "rankScore": 379.6,
+      "value": 1326,
+      "perKm": 132.5,
+      "lengthKm": 10,
+      "tier": "excellent",
+      "sample": [
+        42.4780444,
+        -77.8534698
+      ]
+    },
+    {
+      "ref": null,
+      "name": "ASP Route 3",
+      "rankScore": 377.3,
+      "value": 1396,
+      "perKm": 141.2,
+      "lengthKm": 9.9,
+      "tier": "excellent",
+      "sample": [
+        42.000077,
+        -78.717349
+      ]
+    },
+    {
+      "ref": "CR 76",
+      "name": "Lovers Lane Road",
+      "rankScore": 376.7,
+      "value": 1591,
+      "perKm": 89.2,
+      "lengthKm": 17.8,
+      "tier": "pleasant",
+      "sample": [
+        42.325273,
+        -78.857656
+      ]
+    },
+    {
+      "ref": null,
+      "name": "Fuhrmann Boulevard",
+      "rankScore": 374.3,
+      "value": 1171,
+      "perKm": 120.4,
+      "lengthKm": 9.7,
+      "tier": "excellent",
+      "sample": [
+        42.8337992,
+        -78.8538948
       ]
     }
   ]

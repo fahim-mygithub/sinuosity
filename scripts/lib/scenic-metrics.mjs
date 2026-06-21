@@ -127,6 +127,39 @@ export function twistiness(coords) {
   return { value: Math.round(value), perKm: lengthKm > 0 ? value / lengthKm : 0, lengthKm };
 }
 
+/**
+ * Length-normalized, density-capped DISCOVERY rank key. The old discovery sort used the raw
+ * total weighted-turn value, which scales with length (a long mild road out-totals a short
+ * intense one) and lets mall-ring/roundabout geometry (perKm in the hundreds) dominate. This
+ * caps the per-km density at a noise ceiling and weights by sqrt(length) — a mild preference
+ * for sustained corridors without the linear length bias. NOT a 0-100 score; never feed it to
+ * compositeScore (that is reserved for the rubric).
+ */
+export const DISCOVERY_DENSITY_CAP = 120; // weighted-m/km; real WNY roads cluster ~30-120
+export function rankScore(perKm, lengthKm, cap = DISCOVERY_DENSITY_CAP) {
+  if (!(lengthKm > 0) || !(perKm > 0)) return 0;
+  return Math.min(perKm, cap) * Math.sqrt(lengthKm);
+}
+
+/**
+ * Geodesic destination point: from [lat,lon], travel `distM` metres along compass `bearingDeg`.
+ * Used to offset a sample point PERPENDICULAR to the road (bearing ± 90°) so scenery/land-cover
+ * is measured from the VIEW beside the road, not the tarmac itself.
+ */
+export function destinationPoint(p, bearingDeg, distM) {
+  const R = 6371000;
+  const delta = distM / R;
+  const theta = bearingDeg * d2r;
+  const phi1 = p[0] * d2r;
+  const lam1 = p[1] * d2r;
+  const sinPhi2 = Math.sin(phi1) * Math.cos(delta) + Math.cos(phi1) * Math.sin(delta) * Math.cos(theta);
+  const phi2 = Math.asin(Math.max(-1, Math.min(1, sinPhi2)));
+  const y = Math.sin(theta) * Math.sin(delta) * Math.cos(phi1);
+  const x = Math.cos(delta) - Math.sin(phi1) * sinPhi2;
+  const lam2 = lam1 + Math.atan2(y, x);
+  return [phi2 / d2r, (((lam2 / d2r) + 540) % 360) - 180];
+}
+
 /** Initial compass bearing a -> b, degrees 0..359. */
 export function bearing(a, b) {
   const y = Math.sin((b[1] - a[1]) * d2r) * Math.cos(b[0] * d2r);

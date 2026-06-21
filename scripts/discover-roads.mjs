@@ -16,9 +16,16 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { twistiness, sinuosityScore, pathLengthKm } from './lib/scenic-metrics.mjs';
+import { twistiness, sinuosityScore, pathLengthKm, rankScore, DISCOVERY_DENSITY_CAP } from './lib/scenic-metrics.mjs';
 
 const OUT = fileURLToPath(new URL('./data/discovered-roads.json', import.meta.url));
+const OUT_FULL = fileURLToPath(new URL('./data/discovered-roads-full.json', import.meta.url));
+
+// NY State boundary = OSM relation 61320 -> Overpass area id 3600000000 + 61320. ANDing the tile
+// rectangle with this polygon keeps the scan US-side, so Ontario roads (which have moderate, gate-
+// proof per-km curvature) can never pollute the ranking. NY-only for v1; near-border PA roads are
+// acceptable collateral (a curator re-adds them).
+const NY_AREA = 3600061320;
 const MIRRORS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
@@ -96,7 +103,7 @@ function isPavedThrough(t) {
     for (let w = BBOX.w; w < BBOX.e; w += TILE) {
       const n = Math.min(s + TILE, BBOX.n), e = Math.min(w + TILE, BBOX.e);
       tiles++;
-      const q = `[out:json][timeout:60];way["highway"~"${HIGHWAY}"](${s.toFixed(3)},${w.toFixed(3)},${n.toFixed(3)},${e.toFixed(3)});out geom;`;
+      const q = `[out:json][timeout:60];area(${NY_AREA})->.ny;way["highway"~"${HIGHWAY}"](area.ny)(${s.toFixed(3)},${w.toFixed(3)},${n.toFixed(3)},${e.toFixed(3)});out geom;`;
       const els = await overpass(q, `tile ${s.toFixed(2)},${w.toFixed(2)}`);
       if (els == null) { await sleep(1500); continue; }
       okTiles++;
@@ -119,6 +126,12 @@ function isPavedThrough(t) {
     console.error('No ways returned — Overpass unavailable. The discovery method is unchanged; re-run later.');
     process.exit(2);
   }
+  // A4 — tile-success assertion: a silently-failing area clip (or dead mirrors) would drop whole
+  // regions while the 10-road benchmark still "passes". Fail loudly if too few tiles answered.
+  if (okTiles < tiles * 0.7) {
+    console.error(`Only ${okTiles}/${tiles} tiles answered (<70%) — coverage too sparse to trust the ranking. Re-run when Overpass is healthier.`);
+    process.exit(3);
+  }
 
   // Aggregate ways into roads keyed by ref (preferred) or name; score each road's geometry.
   const roads = new Map();
@@ -134,21 +147,30 @@ function isPavedThrough(t) {
     roads.set(key, r);
   }
 
+  // A2 — rank on a length-normalized, density-capped score (min(perKm,CAP)*sqrt(km)) instead of
+  // the raw total value. The old total scaled with length, so long mild roads out-ranked short
+  // intense climbs and mall-ring/roundabout geometry (perKm in the hundreds) topped the list.
+  // Tiers key off the CAPPED per-km density so the field is informative again.
   const ranked = [...roads.values()]
-    .map((r) => ({
-      ...r,
-      perKm: r.lengthKm > 0 ? +(r.value / r.lengthKm).toFixed(1) : 0,
-      lengthKm: +r.lengthKm.toFixed(1),
-      tier: r.value >= 1000 ? 'excellent' : r.value >= 300 ? 'pleasant' : 'mild',
-    }))
+    .map((r) => {
+      const perKm = r.lengthKm > 0 ? +(r.value / r.lengthKm).toFixed(1) : 0;
+      const cappedPerKm = Math.min(perKm, DISCOVERY_DENSITY_CAP);
+      return {
+        ...r,
+        perKm,
+        lengthKm: +r.lengthKm.toFixed(1),
+        rankScore: +rankScore(perKm, r.lengthKm).toFixed(1),
+        tier: cappedPerKm >= 90 ? 'excellent' : cappedPerKm >= 55 ? 'pleasant' : 'mild',
+      };
+    })
     .filter((r) => r.lengthKm >= 2) // ignore stubs
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => b.rankScore - a.rankScore);
 
-  console.log(`\nTop 25 twistiest WNY roads (by total weighted turn metres):`);
-  console.log('rank  value  perKm  km    tier        road');
+  console.log(`\nTop 25 WNY roads (by length-normalized rankScore = min(perKm,${DISCOVERY_DENSITY_CAP})*sqrt(km)):`);
+  console.log('rank  rankScore  perKm  km    tier        road');
   ranked.slice(0, 25).forEach((r, i) => {
     const nm = r.ref ? `${r.ref}${r.name ? ' (' + r.name + ')' : ''}` : r.name;
-    console.log(`${String(i + 1).padStart(3)}  ${String(r.value).padStart(6)}  ${String(r.perKm).padStart(5)}  ${String(r.lengthKm).padStart(5)}  ${r.tier.padEnd(10)}  ${nm}`);
+    console.log(`${String(i + 1).padStart(3)}  ${String(r.rankScore).padStart(9)}  ${String(r.perKm).padStart(5)}  ${String(r.lengthKm).padStart(5)}  ${r.tier.padEnd(10)}  ${nm}`);
   });
 
   // Benchmark: did discovery surface the known gems, and where do they rank?
@@ -180,13 +202,23 @@ function isPavedThrough(t) {
     wayCount: ways.size,
     roadCount: ranked.length,
     benchmark: benchReport,
+    rankKey: `min(perKm,${DISCOVERY_DENSITY_CAP})*sqrt(lengthKm)`,
     // Top corridors become the seeds for the agentic compose stage (replacing hand-typed boxes).
     corridors: ranked.slice(0, 30).map((r) => ({
-      ref: r.ref || null, name: r.name || null, value: r.value, perKm: r.perKm, lengthKm: r.lengthKm, tier: r.tier, sample: r.sample,
+      ref: r.ref || null, name: r.name || null, rankScore: r.rankScore, value: r.value, perKm: r.perKm, lengthKm: r.lengthKm, tier: r.tier, sample: r.sample,
     })),
   };
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify(payload, null, 2));
+
+  // A3 — persist the FULL ranked corpus (not just the top-30) so every rank claim is falsifiable
+  // and the scenery crawl has a corpus to target. Trim the geometry to a sample point per road.
+  const fullList = ranked.map((r) => ({
+    ref: r.ref || null, name: r.name || null, rankScore: r.rankScore, value: r.value,
+    perKm: r.perKm, lengthKm: r.lengthKm, tier: r.tier, segments: r.segments, sample: r.sample,
+  }));
+  writeFileSync(OUT_FULL, JSON.stringify({ generatedAt: 'build', bbox: BBOX, roadCount: fullList.length, roads: fullList }, null, 2));
+  console.log(`Wrote full ranked corpus (${fullList.length} roads) to ${OUT_FULL}`);
   const foundN = benchReport.filter((b) => b.found).length;
   console.log(`\nBenchmark coverage: ${foundN}/${BENCHMARK.length} renowned roads surfaced.`);
   console.log(`Wrote ${ranked.length} ranked roads (top 30 as corridors) to ${OUT}`);

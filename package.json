@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "scenic:gather": "node scripts/gather-scenic.mjs",
     "scenic:discover": "node scripts/discover-roads.mjs",
+    "scenic:enrich": "node scripts/enrich-scenery.mjs",
     "scenic:snap": "node scripts/snap-streetview.mjs",
     "scenic:assemble": "node scripts/assemble-scenic.mjs",
     "scenic:recurate": "node scripts/recurate-scenic.mjs",
