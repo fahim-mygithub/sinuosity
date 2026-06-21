@@ -4,32 +4,34 @@ import type { ScannedRoad } from '../data/types';
 
 /**
  * Public Overpass mirrors, tried in order. The pool was rebuilt from browser-side probes of the
- * deployed origin: overpass-api.de and overpass.openstreetmap.fr both answer fast WITH CORS, so
- * they lead as the two reliable, planet-wide instances. (overpass.osm.ch is CORS-OK but only
- * serves Switzerland; maps.mail.ru works but is VK-hosted — both excluded.) kumi.systems and
- * private.coffee are kept only as tail fallbacks because they were unreachable from the app's
- * network at last check, but recover on other days/networks. The earlier failure mode was real:
- * the previous pool [de, kumi, private.coffee] had TWO dead mirrors, so when de got busy the
- * "failover" hit nothing. The client bounds the whole sequence via the caller's AbortSignal.
+ * deployed origin: overpass-api.de and overpass.openstreetmap.fr both answer WITH CORS for our
+ * area, so they are the two reliable, planet-wide instances. (overpass.osm.ch is CORS-OK but only
+ * serves Switzerland; maps.mail.ru works but is VK-hosted; kumi.systems / private.coffee were
+ * unreachable from the app's network — all excluded.) The client bounds the whole sequence via
+ * the caller's AbortSignal.
  */
 const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter', // canonical, highest capacity — verified fast w/ CORS
-  'https://overpass.openstreetmap.fr/api/interpreter', // OSM-France — verified working fallback
-  'https://overpass.kumi.systems/api/interpreter', // community mirror (intermittent from some nets)
-  'https://overpass.private.coffee/api/interpreter', // no-rate-limit instance (intermittent)
+  'https://overpass-api.de/api/interpreter', // canonical, highest capacity
+  'https://overpass.openstreetmap.fr/api/interpreter', // OSM-France — CORS-verified fallback
 ];
 
-/** Server-side query budget (seconds). Kept tight so a stuck query fails fast. */
-const SERVER_TIMEOUT_S = 15;
+/**
+ * Server-side query budget (seconds). A wide "all roads in a radius" query legitimately takes
+ * ~20-25s of server time when the public instances are busy, so this can't be tight — too low
+ * and the server self-aborts and returns 0 ways (the old `15` was the real cause of "always
+ * busy": heavy scans never had time to finish). The client still bounds wall-clock below.
+ */
+const SERVER_TIMEOUT_S = 25;
 
 /**
- * Per-mirror connection budget (ms). The public Overpass instances are frequently overloaded;
- * without this, one slow/stalled mirror consumes the caller's entire timeout before the next
- * mirror is even tried (the spinner appears to "hang"). With it, a stalled mirror is abandoned
- * quickly and we fail over — so a healthy mirror in the pool still answers fast. 4 mirrors × 6s
- * stays under the caller's ~25s overall budget, so every mirror gets a turn.
+ * Per-mirror wall-clock budget (ms). This must EXCEED the real query time (~20-25s busy), or we
+ * abandon a mirror that was about to answer — which is exactly the bug that made heavy scans look
+ * permanently "busy" (the old 6-8s killed a 23s query every time). A truly dead mirror still
+ * fails fast (connection refused / CORS error throw immediately); this budget only governs a
+ * mirror that accepted the request but is grinding. The caller's overall timeout (see App) caps
+ * the full sequence, so a stalled lead still leaves room for one fallback attempt.
  */
-const PER_MIRROR_TIMEOUT_MS = 6000;
+const PER_MIRROR_TIMEOUT_MS = 26000;
 
 export class OverpassError extends Error {
   constructor(message: string, public kind: 'timeout' | 'http' | 'network' | 'empty') {

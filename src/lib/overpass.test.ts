@@ -45,7 +45,7 @@ describe('scanRoads error handling', () => {
   it('throws http after all mirrors return non-ok', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({}, false, 504));
     await expect(scanRoads(HOME, 10, 0.3)).rejects.toMatchObject({ kind: 'http' });
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(4); // tried every mirror
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2); // tried every mirror
   });
 
   it('throws network when every mirror fetch rejects', async () => {
@@ -78,7 +78,7 @@ describe('scanRoads error handling', () => {
     }) as typeof fetch;
 
     const p = scanRoads(HOME, 10, 0.1);
-    await vi.advanceTimersByTimeAsync(8000); // trip the per-mirror timeout on mirror #1
+    await vi.advanceTimersByTimeAsync(26000); // trip the per-mirror timeout on mirror #1
     const roads = await p;
     expect(calls).toBe(2); // failed over, did not give up
     expect(roads).toHaveLength(1);

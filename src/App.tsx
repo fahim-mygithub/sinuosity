@@ -205,7 +205,9 @@ export default function App() {
     if (!map || scanning) return;
     const controller = new AbortController();
     scanController.current = controller;
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    // A wide "all roads" Overpass query can take ~25s when the public servers are busy; give the
+    // lead mirror a full attempt plus room for one fallback before the overall abort.
+    const timeout = setTimeout(() => controller.abort(), 38000);
 
     setScanning(true);
     setDetail(null);
@@ -301,6 +303,7 @@ export default function App() {
             <div className="absolute inset-0 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin" />
           </div>
           <p className="text-sm font-semibold text-slate-200">Querying OpenStreetMap…</p>
+          <p className="text-[11px] text-slate-400 -mt-2">Can take 20–30s when the map servers are busy</p>
           <button onClick={cancelScan} className="text-xs text-slate-400 hover:text-emerald-400 underline font-medium py-2 px-3">Cancel</button>
         </div>
       )}
