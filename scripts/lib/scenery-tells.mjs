@@ -19,7 +19,14 @@ export const TAU = { water: 500, green: 320, view: 800, peak: 1500, ugly: 240 };
 // A route sample point is "adjacent" to a family if its nearest feature is within this (metres).
 export const ADJ_M = 260;
 // Size weights for water features (a Great Lake shore reads far stronger than a ditch).
-export const WATER_SIZE = { coastline: 1.0, lake: 0.8, river: 0.6, stream: 0.3, water: 0.7 };
+export const WATER_SIZE = { coastline: 1.0, canal: 0.85, lake: 0.8, river: 0.5, stream: 0.3 };
+// "Open water you can actually see alongside you" vs an incidental ditch/screened creek/retention
+// pond. Proximity ALONE is dishonest (the Heim Rd audit: small unnamed ponds + a gully creek drove
+// a 7.6 score with no visible water). Water rewards OPEN water (weight ≥ OPEN_WATER_W) within sight
+// for a sustained corridor fraction + containment; a minor watercourse adds only a small capped term.
+export const OPEN_WATER_W = 0.7;
+export const MINOR_WATER_W = 0.3;
+export const WATER_SIGHT_M = 120;
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const round1 = (x) => Math.round(x * 10) / 10;
@@ -114,10 +121,25 @@ export function weightedSignal(routePts, weightedTells, tauM) {
 export function measureRubric(coords, tells) {
   const route = sampleRoute(coords);
 
-  // WATER — edge proximity (coastline/river/lake-shore) + lake containment.
-  const wp = weightedSignal(route, tells.waterPts ?? [], TAU.water);
-  const waterContain = fractionInside(route, tells.waterAreas ?? []);
-  const water = clamp(10 * (0.7 * sat(3 * wp.prox) + 0.3 * wp.adj) + 3 * waterContain, 0, 10);
+  // WATER — honest "water you actually ride alongside", not mere proximity (see OPEN_WATER_W note).
+  const waterPts = tells.waterPts ?? [];
+  const openTells = waterPts.filter((t) => t.w >= OPEN_WATER_W);
+  const minorTells = waterPts.filter((t) => t.w >= MINOR_WATER_W && t.w < OPEN_WATER_W);
+  const waterAreas = tells.waterAreas ?? [];
+  let alongHits = 0;
+  for (const rp of route) {
+    let near = false;
+    for (const t of openTells) {
+      if (haversineM(rp, t.pt) <= WATER_SIGHT_M) { near = true; break; }
+    }
+    if (!near) near = waterAreas.some((poly) => poly.length >= 3 && pointInRing(rp, poly));
+    if (near) alongHits++;
+  }
+  const alongFrac = route.length ? alongHits / route.length : 0;
+  const waterContain = fractionInside(route, waterAreas);
+  const openProx = weightedSignal(route, openTells, TAU.water).prox;
+  const minorProx = weightedSignal(route, minorTells, TAU.water).prox;
+  const water = clamp(10 * sat(2.6 * alongFrac) + 2.5 * waterContain + 2.2 * sat(2 * minorProx), 0, 10);
 
   // GREENERY — forest/park CONTAINMENT (road inside the woods) + treeline adjacency, minus ugly.
   const greenContain = fractionInside(route, tells.greenAreas ?? []);
@@ -132,7 +154,8 @@ export function measureRubric(coords, tells) {
   const vs = corridorSignal(route, tells.view ?? [], TAU.view);
   const ps = corridorSignal(route, tells.peak ?? [], TAU.peak);
   const featureBase = 0.62 * sat(2.2 * vs.prox) + 0.38 * sat(1.6 * ps.prox);
-  const naturalness = clamp(0.3 + 0.7 * (1 - uglyFactor) * Math.max(greenContain, sat(2.5 * wp.prox + 1.2 * ge.adj)), 0, 1);
+  const waterNatural = openProx + 0.4 * minorProx;
+  const naturalness = clamp(0.3 + 0.7 * (1 - uglyFactor) * Math.max(greenContain, sat(2.5 * waterNatural + 1.2 * ge.adj)), 0, 1);
   const scenery = clamp(10 * featureBase * naturalness + 2 * waterContain, 0, 10);
 
   // NOTABILITY — discrete "other people care about this" signal; max of available evidence.
@@ -147,7 +170,7 @@ export function measureRubric(coords, tells) {
     water: round1(water),
     notability: round1(notability),
     provenance: {
-      waterAdj: round1(wp.adj), waterContain: round1(waterContain),
+      waterAlong: round1(alongFrac), waterContain: round1(waterContain),
       greenContain: round1(greenContain), greenAdj: round1(ge.adj), uglyFactor: round1(uglyFactor),
       viewProx: round1(vs.prox), peakProx: round1(ps.prox), naturalness: round1(naturalness),
     },

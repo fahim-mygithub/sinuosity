@@ -1,5 +1,5 @@
 import { haversine, pathLength, cleanCoords, flowCurvature, bearing, type LatLng } from './geometry';
-import { measureRubric, pointInRing, type RubricTells } from './sceneryTells';
+import { measureRubric, pointInRing, OPEN_WATER_W, MINOR_WATER_W, type RubricTells } from './sceneryTells';
 import { compositeScore, type BiasWeights } from './composite';
 import type { FeatureCatalog, ScenicPOI } from './features';
 import type { ScoredRoad, ScenicRoute, ScenicRubric, ScenicStop } from '../data/types';
@@ -124,9 +124,10 @@ function downsample(coords: LatLng[], max: number): LatLng[] {
   return out;
 }
 
-const OPEN_WATER_W = 0.7; // lake/canal/coastline tell weight; below this is a creek/stream/drain
-const SHORELINE_NEAR_M = 90; // open water this close, for a real stretch, = a true shoreline
+const SHORELINE_NEAR_M = 90; // open water (w ≥ OPEN_WATER_W) this close, for a stretch = true shoreline
 const TRUE_SHORE_FRAC = 0.22; // ≥ this fraction of the corridor alongside open water → "Shoreline"
+const CREEK_NEAR_M = 70; // a creek/river centerline this close, for a stretch = a real creekside run
+const CREEK_FRAC = 0.15; // ≥ this fraction alongside a minor watercourse → honest "Creekside"
 const WOODED_CONTAIN = 0.35; // road inside tree cover for ≥ this fraction → "Woodland/Backwoods"
 
 /**
@@ -147,6 +148,25 @@ function shorelineFraction(coords: LatLng[], tells: RubricTells): number {
     }
     if (!near) near = tells.waterAreas.some((poly) => poly.length >= 3 && pointInRing(c, poly));
     if (near) hits++;
+  }
+  return coords.length ? hits / coords.length : 0;
+}
+
+/**
+ * Fraction of the corridor that genuinely runs ALONGSIDE a minor watercourse (a creek/river
+ * centerline within ~70 m). This is what makes a ride honestly "Creekside" — you actually track a
+ * creek — as opposed to the old `rubric.water >= 5` label, which (pre-fix) fired on retention ponds
+ * and a screened creek the road merely crossed (the Heim Rd audit). Open water is excluded here; a
+ * lake/canal alongside is a Shoreline (see {@link shorelineFraction}), not a Creekside.
+ */
+function creekFraction(coords: LatLng[], tells: RubricTells): number {
+  const creeks = tells.waterPts.filter((t) => t.w >= MINOR_WATER_W && t.w < OPEN_WATER_W);
+  if (!creeks.length) return 0;
+  let hits = 0;
+  for (const c of coords) {
+    for (const t of creeks) {
+      if (haversine(c, t.pt) * 1000 <= CREEK_NEAR_M) { hits++; break; }
+    }
   }
   return coords.length ? hits / coords.length : 0;
 }
@@ -181,10 +201,11 @@ function toScenicRoute(
   };
   const score = compositeScore(rubric, bias);
   const shore = shorelineFraction(coords, catalog.tells);
+  const creek = creekFraction(coords, catalog.tells);
   const greenContain = m.provenance?.greenContain ?? 0;
   const stops = synthesizeStops(coords, catalog.pois, rubric, shore);
-  const { theme, summary, whyRide } = describe(rubric, km, { shore, greenContain, stopCount: stops.length });
-  const name = rideName(seed, chain, rubric, { shore, greenContain });
+  const { theme, summary, whyRide } = describe(rubric, km, { shore, creek, greenContain, stopCount: stops.length });
+  const name = rideName(seed, chain, rubric, { shore, creek, greenContain });
 
   return {
     id: `scan-${seed.id}-${Math.round(km * 10)}-${coords.length}`,
@@ -317,7 +338,7 @@ function indexAlong(coords: LatLng[], s: ScenicStop): number {
   return bi;
 }
 
-interface RideContext { shore: number; greenContain: number; stopCount: number }
+interface RideContext { shore: number; creek: number; greenContain: number; stopCount: number }
 
 /**
  * Templated, deterministic theme/summary/why-ride — gated on the HONEST signals, not raw proximity.
@@ -326,7 +347,7 @@ interface RideContext { shore: number; greenContain: number; stopCount: number }
  */
 function describe(rubric: ScenicRubric, km: number, ctx: RideContext): { theme: string; summary: string; whyRide: string } {
   const trueShore = ctx.shore >= TRUE_SHORE_FRAC;
-  const creekside = !trueShore && rubric.water >= 5; // near water, but set back / a creek
+  const creekside = !trueShore && ctx.creek >= CREEK_FRAC; // genuinely tracks a creek (not open shore)
   const wooded = ctx.greenContain >= WOODED_CONTAIN; // road actually inside tree cover
   const scenicView = !wooded && rubric.scenery >= 5;
   const notable = rubric.notability >= 5;
@@ -374,13 +395,13 @@ function describe(rubric: ScenicRubric, km: number, ctx: RideContext): { theme: 
 
 /** Name a ride after the strongest-named road in its chain, plus an HONEST terrain descriptor
  *  (Shoreline only for real shoreline; Creek Run for creek-adjacent; Woodland needs containment). */
-function rideName(seed: ScoredRoad, chain: LatLng[][], rubric: ScenicRubric, ctx: { shore: number; greenContain: number }): string {
+function rideName(seed: ScoredRoad, chain: LatLng[][], rubric: ScenicRubric, ctx: { shore: number; creek: number; greenContain: number }): string {
   const base = seed.name && seed.name !== 'Unnamed road' ? seed.name : null;
   const descriptor =
     ctx.shore >= TRUE_SHORE_FRAC ? 'Shoreline Run'
       : ctx.greenContain >= WOODED_CONTAIN ? 'Woodland Run'
         : rubric.curvature >= 6 ? 'Carver'
-          : rubric.water >= 5 ? 'Creek Run'
+          : ctx.creek >= CREEK_FRAC ? 'Creek Run'
             : rubric.notability >= 5 ? 'Landmark Loop'
               : rubric.curvature >= 4 ? 'Run'
                 : 'Backroad';

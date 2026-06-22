@@ -51,7 +51,16 @@ export const TAU = { water: 500, green: 320, view: 800, peak: 1500, ugly: 240 }
 // A route sample point is "adjacent" to a family if its nearest feature is within this (metres).
 export const ADJ_M = 260
 // Size weights for water features (a Great Lake shore reads far stronger than a ditch).
-export const WATER_SIZE = { coastline: 1.0, lake: 0.8, river: 0.6, stream: 0.3, water: 0.7 }
+export const WATER_SIZE = { coastline: 1.0, canal: 0.85, lake: 0.8, river: 0.5, stream: 0.3 }
+// "Open water you can actually see alongside you" vs an incidental ditch/screened creek/retention
+// pond. The Heim Rd Street-View audit showed proximity ALONE is dishonest: 0.25–1.3 ha unnamed
+// ponds set behind houses, plus a creek screened in a wooded gully, drove a 7.6 water score with NO
+// visible water. So the water score rewards OPEN water (weight ≥ OPEN_WATER_W) within sight distance
+// for a sustained fraction of the corridor, plus containment; a minor watercourse (river/stream
+// centerline, OPEN_WATER_W > w ≥ MINOR_WATER_W) adds only a small, capped amount.
+export const OPEN_WATER_W = 0.7
+export const MINOR_WATER_W = 0.3
+export const WATER_SIGHT_M = 120
 
 const clamp = (x: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, x))
 const round1 = (x: number): number => Math.round(x * 10) / 10
@@ -161,10 +170,27 @@ export function weightedSignal(
 export function measureRubric(coords: LatLng[], tells: Partial<RubricTells>): MeasuredScenery {
   const route = sampleRoute(coords)
 
-  // WATER — edge proximity (coastline/river/lake-shore) + lake containment.
-  const wp = weightedSignal(route, tells.waterPts ?? [], TAU.water)
-  const waterContain = fractionInside(route, tells.waterAreas ?? [])
-  const water = clamp(10 * (0.7 * sat(3 * wp.prox) + 0.3 * wp.adj) + 3 * waterContain, 0, 10)
+  // WATER — honest "water you actually ride alongside", not mere proximity (see OPEN_WATER_W note).
+  // Open water within sight distance, for a sustained fraction of the corridor, plus containment for
+  // roads that skirt/cross a real body. A screened creek/stream contributes only a small capped term.
+  const waterPts = tells.waterPts ?? []
+  const openTells = waterPts.filter((t) => t.w >= OPEN_WATER_W)
+  const minorTells = waterPts.filter((t) => t.w >= MINOR_WATER_W && t.w < OPEN_WATER_W)
+  const waterAreas = tells.waterAreas ?? []
+  let alongHits = 0
+  for (const rp of route) {
+    let near = false
+    for (const t of openTells) {
+      if (haversineM(rp, t.pt) <= WATER_SIGHT_M) { near = true; break }
+    }
+    if (!near) near = waterAreas.some((poly) => poly.length >= 3 && pointInRing(rp, poly))
+    if (near) alongHits++
+  }
+  const alongFrac = route.length ? alongHits / route.length : 0
+  const waterContain = fractionInside(route, waterAreas)
+  const openProx = weightedSignal(route, openTells, TAU.water).prox
+  const minorProx = weightedSignal(route, minorTells, TAU.water).prox
+  const water = clamp(10 * sat(2.6 * alongFrac) + 2.5 * waterContain + 2.2 * sat(2 * minorProx), 0, 10)
 
   // GREENERY — forest/park CONTAINMENT (road inside the woods) + treeline adjacency, minus ugly.
   const greenContain = fractionInside(route, tells.greenAreas ?? [])
@@ -179,8 +205,9 @@ export function measureRubric(coords: LatLng[], tells: Partial<RubricTells>): Me
   const vs = corridorSignal(route, tells.view ?? [], TAU.view)
   const ps = corridorSignal(route, tells.peak ?? [], TAU.peak)
   const featureBase = 0.62 * sat(2.2 * vs.prox) + 0.38 * sat(1.6 * ps.prox)
+  const waterNatural = openProx + 0.4 * minorProx
   const naturalness = clamp(
-    0.3 + 0.7 * (1 - uglyFactor) * Math.max(greenContain, sat(2.5 * wp.prox + 1.2 * ge.adj)),
+    0.3 + 0.7 * (1 - uglyFactor) * Math.max(greenContain, sat(2.5 * waterNatural + 1.2 * ge.adj)),
     0,
     1,
   )
@@ -198,7 +225,7 @@ export function measureRubric(coords: LatLng[], tells: Partial<RubricTells>): Me
     water: round1(water),
     notability: round1(notability),
     provenance: {
-      waterAdj: round1(wp.adj),
+      waterAlong: round1(alongFrac),
       waterContain: round1(waterContain),
       greenContain: round1(greenContain),
       greenAdj: round1(ge.adj),

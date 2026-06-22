@@ -97,24 +97,46 @@ function flatPair(): ScoredRoad[] {
 }
 
 // Water points strung `offsetDeg` north of the corridor, dense enough to be the nearest feature.
-function waterCatalog(offsetDeg: number): FeatureCatalog {
+// `w` selects the class: 0.8 = open water (lake/canal), 0.5 = a river/creek centerline, 0.2 = a
+// negligible retention pond (already gated down in features.ts).
+function waterCatalog(offsetDeg: number, w = 0.8): FeatureCatalog {
   const waterPts = [];
-  for (let lon = -78.85; lon <= -78.77; lon += 0.0008) waterPts.push({ pt: [42.70 + offsetDeg, +lon.toFixed(5)] as LatLng, w: 0.8 });
+  for (let lon = -78.85; lon <= -78.77; lon += 0.0008) waterPts.push({ pt: [42.70 + offsetDeg, +lon.toFixed(5)] as LatLng, w });
   return { tells: { ...EMPTY_CATALOG.tells, waterPts }, pois: [] };
 }
 
-describe('honesty pass — Shoreline vs Creekside', () => {
-  it('labels a road WITH open water alongside (~78 m) as a real Shoreline', () => {
-    const [r] = buildRides(flatPair(), waterCatalog(0.0007), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+describe('honesty pass — water is sold only when you can see/ride it', () => {
+  it('labels a road WITH open water alongside (~78 m) as a real Shoreline with a high water score', () => {
+    const [r] = buildRides(flatPair(), waterCatalog(0.0007, 0.8), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
     expect(r.theme).toBe('Shoreline');
     expect(r.name).toContain('Shoreline Run');
+    expect(r.rubric.water).toBeGreaterThan(5);
   });
 
-  it('labels a road NEAR water but set back (~145 m, behind houses) as Creekside, not Shoreline', () => {
-    const [r] = buildRides(flatPair(), waterCatalog(0.0013), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
-    expect(r.rubric.water).toBeGreaterThanOrEqual(5); // water proximity is still real (high rubric)...
-    expect(r.theme).toBe('Creekside'); // ...but it is NOT sold as a shoreline
+  it('does NOT oversell open water set back ~145 m (behind houses): low water score, not a Shoreline', () => {
+    const [r] = buildRides(flatPair(), waterCatalog(0.0013, 0.8), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.theme).not.toBe('Shoreline');
+    expect(r.rubric.water).toBeLessThan(3); // out of sight (>120 m) ⇒ not a waterside ride
+    expect(r.name).not.toContain('Shoreline');
+  });
+
+  it('labels a road tracking a creek (~44 m) as Creekside with a modest (not high) water score', () => {
+    const [r] = buildRides(flatPair(), waterCatalog(0.0004, 0.5), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.theme).toBe('Creekside');
     expect(r.name).toContain('Creek Run');
+    expect(r.rubric.water).toBeGreaterThan(0);
+    expect(r.rubric.water).toBeLessThan(5); // a screened creek is real, but not a shoreline
+  });
+
+  it('the Heim Rd case: only tiny retention ponds nearby ⇒ no water claim at all', () => {
+    // Small unnamed ponds arrive pre-gated at w=0.2 (see features.ts). The ride must read as a plain
+    // backroad — no Shoreline, no Creek Run, ~0 water — which is what Street View actually shows.
+    const [r] = buildRides(flatPair(), waterCatalog(0.0004, 0.2), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.rubric.water).toBeLessThan(1);
+    expect(r.theme).not.toBe('Shoreline');
+    expect(r.theme).not.toBe('Creekside');
+    expect(r.name).not.toContain('Creek');
+    expect(r.name).not.toContain('Shoreline');
   });
 });
 

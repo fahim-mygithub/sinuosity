@@ -90,8 +90,66 @@ describe('categorizeFeatures', () => {
     expect(byName('Big View')?.notable).toBe(true)
     expect(byName('Cattaraugus Creek')?.kind).toBe('water')
     expect(byName('Zoar Woods')?.kind).toBe('forest')
-    // river weight mirrors the tells weight
-    expect(byName('Cattaraugus Creek')?.weight).toBeCloseTo(0.6)
+    // river weight mirrors the tells weight (a minor watercourse, below the open-water threshold)
+    expect(byName('Cattaraugus Creek')?.weight).toBeCloseTo(0.5)
+  })
+
+  it('treats a small unnamed natural=water as a negligible pond, not open water', () => {
+    // A ~0.5 ha unnamed pond (subdivision retention pond) — the Heim Rd audit case. It must NOT
+    // become a containment polygon and must carry a negligible weight (below the open-water bar).
+    const pond: OverpassElement[] = [
+      {
+        type: 'way',
+        id: 21,
+        tags: { natural: 'water' }, // unnamed
+        geometry: [
+          { lat: 43.011, lon: -78.7592 }, { lat: 43.0115, lon: -78.7592 },
+          { lat: 43.0115, lon: -78.7585 }, { lat: 43.011, lon: -78.7585 },
+          { lat: 43.011, lon: -78.7592 },
+        ],
+      },
+    ]
+    const { tells } = categorizeFeatures(pond)
+    expect(tells.waterAreas.length).toBe(0) // not a containment body
+    expect(tells.waterPts.every((p) => p.w < 0.3)).toBe(true) // negligible weight
+  })
+
+  it('treats a large lake as open water (containment + full weight) even when unnamed', () => {
+    // ~1 km square ≈ 100 ha — unmistakably a real lake; size alone clears the open-water bar.
+    const lake: OverpassElement[] = [
+      {
+        type: 'way',
+        id: 22,
+        tags: { natural: 'water' }, // unnamed but large
+        geometry: [
+          { lat: 43.00, lon: -78.80 }, { lat: 43.009, lon: -78.80 },
+          { lat: 43.009, lon: -78.788 }, { lat: 43.00, lon: -78.788 },
+          { lat: 43.00, lon: -78.80 },
+        ],
+      },
+    ]
+    const { tells } = categorizeFeatures(lake)
+    expect(tells.waterAreas.length).toBe(1)
+    expect(tells.waterPts.some((p) => p.w >= 0.7)).toBe(true)
+  })
+
+  it('keeps a named natural=water as open water regardless of size', () => {
+    // Same tiny footprint as the retention pond, but NAMED → a real (small) lake people care about.
+    const namedPond: OverpassElement[] = [
+      {
+        type: 'way',
+        id: 23,
+        tags: { natural: 'water', name: 'Glen Pond' },
+        geometry: [
+          { lat: 43.011, lon: -78.7592 }, { lat: 43.0115, lon: -78.7592 },
+          { lat: 43.0115, lon: -78.7585 }, { lat: 43.011, lon: -78.7585 },
+          { lat: 43.011, lon: -78.7592 },
+        ],
+      },
+    ]
+    const { tells } = categorizeFeatures(namedPond)
+    expect(tells.waterAreas.length).toBe(1)
+    expect(tells.waterPts.some((p) => p.w >= 0.7)).toBe(true)
   })
 
   it('handles relations via member geometry and skips untagged/geometryless elements', () => {
