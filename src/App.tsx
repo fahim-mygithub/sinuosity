@@ -62,65 +62,52 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const scanController = useRef<AbortController | null>(null);
-  // Live handle on the dashed scan-radius ring so the slider can resize it in place, plus an
-  // invisible fat-stroke twin that serves as the easy-to-grab drag handle for moving the scan.
+  // Live handle on the dashed scan-radius ring so the slider can resize it in place, plus a
+  // visible, draggable center pin (Leaflet marker) that moves the whole scan area.
   const scanCircleRef = useRef<L.Circle | null>(null);
-  const scanHitRef = useRef<L.Circle | null>(null);
+  const scanHandleRef = useRef<L.Marker | null>(null);
   // Latest "ring dropped at" handler, held in a ref so drawScanCircle's drag wiring never goes stale.
   const onCircleDropRef = useRef<(ll: L.LatLng) => void>(() => {});
 
   const showToast = useCallback((m: string) => setToast(m), []);
 
   // Draw (or replace) the scan-radius ring at `center`, keeping a handle so the radius slider
-  // can grow/shrink it live without a re-scan. Call AFTER clearLayers() so it isn't wiped. A second,
-  // invisible fat-stroke ring sits on top as the DRAG HANDLE: grab the ring anywhere and slide the
-  // whole scan area to a new spot. We use raw pointer events (mouse/touch/pen alike), disable map
-  // panning for the drag, and drive the move off the hit-ring only — so the faint disk interior still
-  // pans the map normally. On release, onCircleDropRef recenters the scan there.
+  // can grow/shrink it live without a re-scan. Call AFTER clearLayers() so it isn't wiped. A visible
+  // emerald "move" pin sits at the center as the DRAG HANDLE — Leaflet's own marker dragging handles
+  // mouse/touch/pen and suppresses map panning while you drag, so it's reliable everywhere. As the
+  // pin moves the dashed circle tracks it live; on release, onCircleDropRef recenters the scan.
   const drawScanCircle = useCallback((center: LatLng) => {
     const radius = scanRadius * 1000;
     const circle = L.circle(center, { ...SCAN_CIRCLE, radius, interactive: false });
-    const hit = L.circle(center, { radius, stroke: true, color: '#10b981', opacity: 0, weight: 22, fill: false, interactive: true });
-    scanCircleRef.current = circle;
-    scanHitRef.current = hit;
-    addLayer(circle);
-    addLayer(hit);
-
-    const el = hit.getElement() as SVGElement | null;
-    if (!el || !map) return;
-    el.style.cursor = 'grab';
-    el.style.touchAction = 'none'; // stop the browser from scrolling the page during a touch-drag
-    el.addEventListener('pointerdown', (e: PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation(); // don't let the map start a pan
-      map.dragging.disable();
-      el.style.cursor = 'grabbing';
-      const onMove = (pe: PointerEvent) => {
-        const ll = map.mouseEventToLatLng(pe);
-        circle.setLatLng(ll);
-        hit.setLatLng(ll);
-      };
-      const onUp = () => {
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-        document.removeEventListener('pointercancel', onUp);
-        el.style.cursor = 'grab';
-        map.dragging.enable();
-        onCircleDropRef.current(hit.getLatLng());
-      };
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
-      document.addEventListener('pointercancel', onUp);
+    const handleIcon = L.divIcon({
+      className: '',
+      html:
+        `<div title="Drag to move the scan area" style="width:34px;height:34px;display:flex;align-items:center;` +
+        `justify-content:center;background:#10b981;border:2px solid #fff;border-radius:9999px;` +
+        `box-shadow:0 2px 8px rgba(0,0,0,.6);cursor:move;touch-action:none">` +
+        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#022c22" stroke-width="2.5" ` +
+        `stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/>` +
+        `<polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/>` +
+        `<polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/>` +
+        `<line x1="12" y1="2" x2="12" y2="22"/></svg></div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
     });
-  }, [addLayer, scanRadius, map]);
+    const handle = L.marker(center, { icon: handleIcon, draggable: true, zIndexOffset: 1200, keyboard: false });
+    handle.on('drag', () => circle.setLatLng(handle.getLatLng()));
+    handle.on('dragend', () => onCircleDropRef.current(handle.getLatLng()));
+    handle.bindTooltip('Drag to move the scan area', { direction: 'top', offset: [0, -18], opacity: 0.9 });
+    scanCircleRef.current = circle;
+    scanHandleRef.current = handle;
+    addLayer(circle);
+    addLayer(handle); // on top of the disk so it's always grabbable
+  }, [addLayer, scanRadius]);
 
-  // Resize both rings in place as the slider moves (no clear, no re-scan) so the on-map circle
-  // always matches the "{n} km" readout.
+  // Resize the dashed ring in place as the slider moves (no clear, no re-scan) so the on-map circle
+  // always matches the "{n} km" readout. The center pin stays put.
   useEffect(() => {
     if (tab === 'scanner') {
-      const r = scanRadius * 1000;
-      scanCircleRef.current?.setRadius(r);
-      scanHitRef.current?.setRadius(r);
+      scanCircleRef.current?.setRadius(scanRadius * 1000);
     }
   }, [scanRadius, tab]);
 
@@ -525,7 +512,7 @@ export default function App() {
                 <label htmlFor="scan-radius" className="text-[10px] font-bold text-slate-300">Search radius</label>
                 <input id="scan-radius" type="range" min={5} max={30} value={scanRadius} aria-label="Search radius in kilometers" aria-valuetext={`${scanRadius} kilometers`} onChange={(e) => setScanRadius(+e.target.value)} />
                 <div className="text-right font-mono text-emerald-400 font-bold text-sm">{scanRadius} km</div>
-                <p className="text-[10px] text-slate-500 mt-1">Tip: drag the ring on the map to move the scan area.</p>
+                <p className="text-[10px] text-slate-500 mt-1">Tip: drag the green center pin on the map to move the scan area.</p>
               </div>
 
               {/* Bias: one-tap presets + an expandable manual mixer. Changing either re-ranks the
