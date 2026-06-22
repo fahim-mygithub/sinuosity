@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanCoords, curvature10, spurApexes, sinuosityScore, pathLength, type LatLng } from './geometry';
+import { cleanCoords, curvature10, flowCurvature, spurApexes, sinuosityScore, pathLength, type LatLng } from './geometry';
 import { compositeScore } from './scenicScore';
 import { SCENIC_ROUTES } from '../data/scenicRoutes';
 
@@ -93,8 +93,8 @@ describe('shipped scenic dataset invariants', () => {
 
   for (const r of SCENIC_ROUTES) {
     describe(r.id, () => {
-      it('curvature is MEASURED from the stored geometry (not hand-assigned)', () => {
-        expect(r.rubric.curvature).toBeCloseTo(curvature10(r.coords), 1);
+      it('curvature is MEASURED from the stored geometry as rideable flow (not hand-assigned)', () => {
+        expect(r.rubric.curvature).toBeCloseTo(flowCurvature(r.coords), 1);
       });
 
       it('score is the reproducible composite of its rubric', () => {

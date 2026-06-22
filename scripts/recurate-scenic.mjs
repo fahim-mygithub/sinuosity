@@ -16,7 +16,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  cleanCoords, curvature10, sinuosityScore, pathLengthKm, compositeScore,
+  cleanCoords, flowCurvature, sinuosityScore, pathLengthKm, compositeScore,
   parseDriveTime, formatDriveTime, COMPOSITE_WEIGHTS,
 } from './lib/scenic-metrics.mjs';
 
@@ -57,8 +57,9 @@ for (const r of routes) {
   r.distanceKm = +newKm.toFixed(1);
   if (newMin != null) r.drivingTime = formatDriveTime(newMin);
 
-  // MEASURE curvature from the cleaned geometry; never trust the LLM rubric value.
-  r.rubric = { ...r.rubric, curvature: curvature10(r.coords) };
+  // MEASURE curvature from the cleaned geometry as RIDEABLE FLOW (junction corners + jitter
+  // excluded), matching the Live-scan tab; never trust the LLM rubric value.
+  r.rubric = { ...r.rubric, curvature: flowCurvature(r.coords) };
 
   for (const s of r.stops) {
     if (s.heading === 0 && HEADING_FIXES[s.title] != null) s.heading = HEADING_FIXES[s.title];

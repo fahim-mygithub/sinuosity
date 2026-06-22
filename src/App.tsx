@@ -8,6 +8,7 @@ import { BIAS_PRESETS, COMPOSITE_WEIGHTS, normalizeWeights, type BiasWeights, ty
 import { CURATED_ROUTES } from './data/curatedRoutes';
 import { SCENIC_ROUTES } from './data/scenicRoutes';
 import { loadDefaultLocation, saveDefaultLocation, type SavedLocation } from './lib/settings';
+import { reverseGeocode } from './lib/geocode';
 import { LocationSearch } from './components/LocationSearch';
 import { ScenicRouteReview } from './components/ScenicRouteReview';
 import { KIND_ICON } from './lib/scenicMeta';
@@ -61,23 +62,66 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const scanController = useRef<AbortController | null>(null);
-  // Live handle on the dashed scan-radius ring so the slider can resize it in place.
+  // Live handle on the dashed scan-radius ring so the slider can resize it in place, plus an
+  // invisible fat-stroke twin that serves as the easy-to-grab drag handle for moving the scan.
   const scanCircleRef = useRef<L.Circle | null>(null);
+  const scanHitRef = useRef<L.Circle | null>(null);
+  // Latest "ring dropped at" handler, held in a ref so drawScanCircle's drag wiring never goes stale.
+  const onCircleDropRef = useRef<(ll: L.LatLng) => void>(() => {});
 
   const showToast = useCallback((m: string) => setToast(m), []);
 
   // Draw (or replace) the scan-radius ring at `center`, keeping a handle so the radius slider
-  // can grow/shrink it live without a re-scan. Call AFTER clearLayers() so it isn't wiped.
+  // can grow/shrink it live without a re-scan. Call AFTER clearLayers() so it isn't wiped. A second,
+  // invisible fat-stroke ring sits on top as the DRAG HANDLE: grab the ring anywhere and slide the
+  // whole scan area to a new spot. We use raw pointer events (mouse/touch/pen alike), disable map
+  // panning for the drag, and drive the move off the hit-ring only — so the faint disk interior still
+  // pans the map normally. On release, onCircleDropRef recenters the scan there.
   const drawScanCircle = useCallback((center: LatLng) => {
-    const circle = L.circle(center, { ...SCAN_CIRCLE, radius: scanRadius * 1000 });
+    const radius = scanRadius * 1000;
+    const circle = L.circle(center, { ...SCAN_CIRCLE, radius, interactive: false });
+    const hit = L.circle(center, { radius, stroke: true, color: '#10b981', opacity: 0, weight: 22, fill: false, interactive: true });
     scanCircleRef.current = circle;
+    scanHitRef.current = hit;
     addLayer(circle);
-  }, [addLayer, scanRadius]);
+    addLayer(hit);
 
-  // Resize the ring in place as the slider moves (no clear, no re-scan) so the on-map circle
+    const el = hit.getElement() as SVGElement | null;
+    if (!el || !map) return;
+    el.style.cursor = 'grab';
+    el.style.touchAction = 'none'; // stop the browser from scrolling the page during a touch-drag
+    el.addEventListener('pointerdown', (e: PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation(); // don't let the map start a pan
+      map.dragging.disable();
+      el.style.cursor = 'grabbing';
+      const onMove = (pe: PointerEvent) => {
+        const ll = map.mouseEventToLatLng(pe);
+        circle.setLatLng(ll);
+        hit.setLatLng(ll);
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
+        el.style.cursor = 'grab';
+        map.dragging.enable();
+        onCircleDropRef.current(hit.getLatLng());
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+    });
+  }, [addLayer, scanRadius, map]);
+
+  // Resize both rings in place as the slider moves (no clear, no re-scan) so the on-map circle
   // always matches the "{n} km" readout.
   useEffect(() => {
-    if (tab === 'scanner') scanCircleRef.current?.setRadius(scanRadius * 1000);
+    if (tab === 'scanner') {
+      const r = scanRadius * 1000;
+      scanCircleRef.current?.setRadius(r);
+      scanHitRef.current?.setRadius(r);
+    }
   }, [scanRadius, tab]);
 
   // fitBounds padding that keeps the drawn route clear of the panel (left dock on
@@ -125,25 +169,6 @@ export default function App() {
   // Scenic & Curated tabs share the same review experience: draw all routes as an overview, or
   // one selected route + numbered stops. (Curated routes are now full ScenicRoutes too.)
   const browseRoutes = tab === 'curated' ? CURATED_SORTED : SCENIC_SORTED;
-  useEffect(() => {
-    if (!ready || !map || (tab !== 'scenic' && tab !== 'curated')) return;
-    clearLayers();
-    if (scenicDetail) {
-      const r = scenicDetail;
-      addLayer(L.polyline(r.coords, { color: r.color, weight: 5, opacity: 0.92 }));
-      r.stops.forEach((s, i) => drawScenicStop(s, i, r.color, i === activeStopIdx));
-      // Fit once per route — not on activeStopIdx change, so "Locate" flyTo isn't overridden.
-      if (fittedRouteId.current !== r.id) {
-        const b = L.polyline(r.coords).getBounds();
-        if (b.isValid()) map.fitBounds(b, fitOptions());
-        fittedRouteId.current = r.id;
-      }
-    } else {
-      fittedRouteId.current = null;
-      browseRoutes.forEach((r) => addLayer(L.polyline(r.coords, { color: r.color, weight: 4, opacity: 0.8 })));
-      map.setView(homeCenter, 9);
-    }
-  }, [ready, tab, scenicDetail, activeStopIdx, map, clearLayers, addLayer, drawScenicStop, fitOptions, browseRoutes, homeCenter]);
 
   const selectScenic = useCallback((r: ScenicRoute, originEl?: HTMLElement | null) => {
     lastScenicFocus.current = originEl ?? null;
@@ -189,6 +214,29 @@ export default function App() {
     });
   }, [addLayer, selectScenic]);
 
+  // Scenic & Curated tabs share the same review experience: draw all routes as an overview (each
+  // line clickable → opens the cruise page, same as the Scan tab via drawRides), or one selected
+  // route + its numbered stops. Placed after drawRides so the overview can reuse its clickable lines.
+  useEffect(() => {
+    if (!ready || !map || (tab !== 'scenic' && tab !== 'curated')) return;
+    clearLayers();
+    if (scenicDetail) {
+      const r = scenicDetail;
+      addLayer(L.polyline(r.coords, { color: r.color, weight: 5, opacity: 0.92 }));
+      r.stops.forEach((s, i) => drawScenicStop(s, i, r.color, i === activeStopIdx));
+      // Fit once per route — not on activeStopIdx change, so "Locate" flyTo isn't overridden.
+      if (fittedRouteId.current !== r.id) {
+        const b = L.polyline(r.coords).getBounds();
+        if (b.isValid()) map.fitBounds(b, fitOptions());
+        fittedRouteId.current = r.id;
+      }
+    } else {
+      fittedRouteId.current = null;
+      drawRides(browseRoutes); // clickable colored lines (hit-line beneath) → tap a path to open it
+      map.setView(homeCenter, 9);
+    }
+  }, [ready, tab, scenicDetail, activeStopIdx, map, clearLayers, addLayer, drawScenicStop, drawRides, fitOptions, browseRoutes, homeCenter]);
+
   // Re-rank + redraw from the cached area corpus under a bias — no network. Used both right after a
   // scan and whenever the rider nudges a bias slider, so weighting changes feel instant.
   const rebuildRides = useCallback((scan: AreaScan, b: BiasWeights): ScenicRoute[] => {
@@ -216,6 +264,31 @@ export default function App() {
     }
     showToast(`Scan centered on ${loc.label}`);
   }, [map, clearLayers, drawScanCircle, showToast]);
+
+  // Ring dropped after a freehand drag: recenter the scan there WITHOUT flying the map (the rider
+  // just placed it by hand). Reset any prior results, label it with the coord immediately, then
+  // upgrade the label from a background reverse-geocode when it returns.
+  const handleCircleDrop = useCallback((ll: L.LatLng) => {
+    const lat = +ll.lat.toFixed(5);
+    const lon = +ll.lng.toFixed(5);
+    const provisional: SavedLocation = { label: `Dropped pin · ${lat.toFixed(3)}, ${lon.toFixed(3)}`, lat, lon };
+    setScanCenter(provisional);
+    setScanRides([]);
+    setAreaScan(null);
+    setHasScanned(false);
+    if (map) {
+      clearLayers();
+      drawScanCircle([lat, lon]);
+    }
+    showToast('Scan moved — tap “Scan & build rides” to search here');
+    reverseGeocode(lat, lon)
+      .then((r) => {
+        if (r?.label) setScanCenter((c) => (c.lat === lat && c.lon === lon ? { ...c, label: r.label } : c));
+      })
+      .catch(() => { /* keep the coord label */ });
+  }, [map, clearLayers, drawScanCircle, showToast]);
+
+  useEffect(() => { onCircleDropRef.current = handleCircleDrop; }, [handleCircleDrop]);
 
   const handleSetDefault = useCallback(() => {
     if (saveDefaultLocation(scanCenter)) {
@@ -419,7 +492,8 @@ export default function App() {
                       key={r.id}
                       onClick={(e) => selectScenic(r, e.currentTarget)}
                       aria-current={isActive ? 'true' : undefined}
-                      className={`w-full flex justify-between items-center p-3 rounded-xl border active:scale-[.99] transition-all text-left ${isActive ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-800 bg-slate-900/40'}`}
+                      className={`w-full flex justify-between items-center p-3 rounded-xl border-2 active:scale-[.99] transition-all text-left ${isActive ? 'bg-emerald-500/10' : 'bg-slate-900/40'}`}
+                      style={{ borderColor: r.color, boxShadow: isActive ? `0 0 0 2px ${r.color}66` : undefined }}
                     >
                       <div className="min-w-0 pr-2">
                         <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
@@ -451,6 +525,7 @@ export default function App() {
                 <label htmlFor="scan-radius" className="text-[10px] font-bold text-slate-300">Search radius</label>
                 <input id="scan-radius" type="range" min={5} max={30} value={scanRadius} aria-label="Search radius in kilometers" aria-valuetext={`${scanRadius} kilometers`} onChange={(e) => setScanRadius(+e.target.value)} />
                 <div className="text-right font-mono text-emerald-400 font-bold text-sm">{scanRadius} km</div>
+                <p className="text-[10px] text-slate-500 mt-1">Tip: drag the ring on the map to move the scan area.</p>
               </div>
 
               {/* Bias: one-tap presets + an expandable manual mixer. Changing either re-ranks the
@@ -506,7 +581,7 @@ export default function App() {
                   <p className="text-[11px] text-slate-400 italic text-center py-3">{hasScanned ? 'No rides matched here — widen the radius, lighten the bias, or try a twistier area.' : 'Catalogs real roads, water, woods, viewpoints and landmarks in your radius, then stitches rides ranked by your bias. Tap a ride — or its line on the map — for the full review.'}</p>
                 ) : (
                   scanRides.map((r) => (
-                    <button key={r.id} onClick={(e) => selectScenic(r, e.currentTarget)} aria-current={scenicDetail?.id === r.id ? 'true' : undefined} className={`w-full flex justify-between items-center gap-2 p-3 rounded-xl border active:scale-[.99] transition-all text-left ${scenicDetail?.id === r.id ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-800 bg-slate-900/40'}`}>
+                    <button key={r.id} onClick={(e) => selectScenic(r, e.currentTarget)} aria-current={scenicDetail?.id === r.id ? 'true' : undefined} style={{ borderColor: r.color, boxShadow: scenicDetail?.id === r.id ? `0 0 0 2px ${r.color}66` : undefined }} className={`w-full flex justify-between items-center gap-2 p-3 rounded-xl border-2 active:scale-[.99] transition-all text-left ${scenicDetail?.id === r.id ? 'bg-emerald-500/10' : 'bg-slate-900/40'}`}>
                       <div className="min-w-0 pr-1">
                         <div className="flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} aria-hidden />

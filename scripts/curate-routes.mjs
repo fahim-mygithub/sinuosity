@@ -17,7 +17,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  cleanCoords, curvature10, compositeScore, pathLengthKm,
+  cleanCoords, flowCurvature, compositeScore, pathLengthKm,
   COMPOSITE_WEIGHTS, formatDriveTime, bearing, haversineM,
 } from './lib/scenic-metrics.mjs';
 import { CURATED_SEED } from './data/curated-seed.mjs';
@@ -149,7 +149,7 @@ const tsLiteral = (v) => JSON.stringify(v);
     for (const s of seed.stops) stops.push(await snapStop(s));
 
     // Curvature is MEASURED from the cleaned polyline; score is the transparent composite.
-    const rubric = { ...seed.rubric, curvature: curvature10(coords) };
+    const rubric = { ...seed.rubric, curvature: flowCurvature(coords) };
     const score = compositeScore(rubric);
 
     out.push({

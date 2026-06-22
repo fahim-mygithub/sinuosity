@@ -57,6 +57,30 @@ export function curvature10(coords) {
   return Math.round(Math.min(10, sinuosityScore(coords) * 4) * 10) / 10;
 }
 
+// "Rideable flow" curvature band: count only turns that are real curves a rider leans into —
+// excluding junction/intersection corners (> ~75°, which the honesty audit showed inflate the
+// score) and sub-degree digitization jitter (< ~4°). Mirror of flowCurvature in src/lib/geometry.ts.
+const FLOW_MIN_TURN = (4 * Math.PI) / 180;
+const FLOW_MAX_TURN = (75 * Math.PI) / 180;
+
+/**
+ * Flow-aware curvature on the 0-10 "Twisties" scale: total in-band angular deviation per km of
+ * cleaned road. This is the measure the Live-scan tab now uses; bringing the baked Scenic/Curated
+ * routes onto it keeps "twistiness" comparable across all three tabs (no junction-corner inflation).
+ */
+export function flowCurvature(coords) {
+  const pts = cleanCoords(coords);
+  const dist = pathLengthKm(pts);
+  if (dist < 0.3) return 0;
+  let deviation = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const angle = turnAngle(groundVector(pts[i - 1], pts[i]), groundVector(pts[i], pts[i + 1]));
+    if (angle == null || angle < FLOW_MIN_TURN || angle > FLOW_MAX_TURN) continue;
+    deviation += angle;
+  }
+  return Math.round(Math.min(10, (deviation / dist) * 4) * 10) / 10;
+}
+
 /**
  * Remove near-duplicate consecutive points and out-and-back spurs (dead-end U-turns
  * that draw the line back on itself). Spur removal is anchored on the ~180° reversal
