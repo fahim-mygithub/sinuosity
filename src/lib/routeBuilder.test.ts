@@ -81,6 +81,65 @@ describe('buildRides', () => {
   });
 });
 
+// Two flat (curvature-free) roads sharing a junction, so they STITCH (chain>1, descriptor applies)
+// and the corridor is densely sampled — isolates water/viewpoint behaviour from curve scoring.
+function flatHalf(id: string, lon0: number, lon1: number): ScoredRoad {
+  const n = 40;
+  const coords: LatLng[] = [];
+  for (let i = 0; i < n; i++) coords.push([42.70, +(lon0 + (lon1 - lon0) * (i / (n - 1))).toFixed(5)]);
+  return { id, name: id, curveDensity: 0, sinuosity: 0, score: 0, rubric: rubric(), coords };
+}
+function flatPair(): ScoredRoad[] {
+  const a = flatHalf('Lakeview Rd', -78.84, -78.81);
+  const b = flatHalf('Lakeview Rd', -78.81, -78.78);
+  b.coords[0] = a.coords[a.coords.length - 1]; // exact shared junction
+  return [a, b];
+}
+
+// Water points strung `offsetDeg` north of the corridor, dense enough to be the nearest feature.
+function waterCatalog(offsetDeg: number): FeatureCatalog {
+  const waterPts = [];
+  for (let lon = -78.85; lon <= -78.77; lon += 0.0008) waterPts.push({ pt: [42.70 + offsetDeg, +lon.toFixed(5)] as LatLng, w: 0.8 });
+  return { tells: { ...EMPTY_CATALOG.tells, waterPts }, pois: [] };
+}
+
+describe('honesty pass — Shoreline vs Creekside', () => {
+  it('labels a road WITH open water alongside (~78 m) as a real Shoreline', () => {
+    const [r] = buildRides(flatPair(), waterCatalog(0.0007), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.theme).toBe('Shoreline');
+    expect(r.name).toContain('Shoreline Run');
+  });
+
+  it('labels a road NEAR water but set back (~145 m, behind houses) as Creekside, not Shoreline', () => {
+    const [r] = buildRides(flatPair(), waterCatalog(0.0013), { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.rubric.water).toBeGreaterThanOrEqual(5); // water proximity is still real (high rubric)...
+    expect(r.theme).toBe('Creekside'); // ...but it is NOT sold as a shoreline
+    expect(r.name).toContain('Creek Run');
+  });
+});
+
+describe('honesty pass — verified viewpoints only lift notability', () => {
+  const onRoute: LatLng = [42.7004, -78.81]; // ~45 m off the line at the junction vertex, < 150 m
+
+  it('does NOT lift notability for a bare unnamed viewpoint map-tell', () => {
+    const cat: FeatureCatalog = {
+      tells: { ...EMPTY_CATALOG.tells, view: [onRoute] },
+      pois: [{ pt: onRoute, kind: 'viewpoint', notable: false, weight: 1 }],
+    };
+    const [r] = buildRides(flatPair(), cat, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.rubric.notability).toBeLessThan(5); // the old floor would have forced 7
+  });
+
+  it('DOES lift notability for a named/verified viewpoint', () => {
+    const cat: FeatureCatalog = {
+      tells: { ...EMPTY_CATALOG.tells, view: [onRoute] },
+      pois: [{ pt: onRoute, name: 'Gorge Overlook', kind: 'viewpoint', notable: true, weight: 1 }],
+    };
+    const [r] = buildRides(flatPair(), cat, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.rubric.notability).toBeGreaterThanOrEqual(7);
+  });
+});
+
 describe('synthesizeStops', () => {
   const coords: LatLng[] = Array.from({ length: 20 }, (_, i) => [42.7, -78.8 + i * 0.002] as LatLng);
 

@@ -1,5 +1,41 @@
 import { describe, it, expect } from 'vitest';
-import { haversine, pathLength, sinuosityScore, sharpestTurnIndices, type LatLng } from './geometry';
+import { haversine, pathLength, sinuosityScore, sharpestTurnIndices, flowCurvature, type LatLng } from './geometry';
+
+describe('flowCurvature', () => {
+  // A straight road that makes ONE 90° turn into a side street (the intersection-corner case).
+  const intersectionCorner: LatLng[] = [
+    [42.70, -78.80], [42.70, -78.79], [42.70, -78.78], [42.70, -78.77], // straight east
+    [42.71, -78.77], [42.72, -78.77], [42.73, -78.77], // 90° turn, then straight north
+  ];
+  // A road that genuinely arcs — a run of ~15° turns in the same direction (a real sweeper).
+  const sweeper: LatLng[] = Array.from({ length: 12 }, (_, i) => {
+    const t = i / 11; const ang = t * Math.PI * 0.5; // quarter circle
+    return [42.70 + 0.03 * (1 - Math.cos(ang)), -78.80 + 0.03 * Math.sin(ang)] as LatLng;
+  });
+  // A straight road digitized with sub-degree lateral jitter (mapping noise, not corners).
+  const jitterStraight: LatLng[] = Array.from({ length: 40 }, (_, i) =>
+    [42.70 + (i % 2 === 0 ? 0 : 0.00002), -78.80 + i * 0.0009] as LatLng,
+  );
+
+  it('excludes a lone 90° intersection corner (it is not a flowing curve)', () => {
+    expect(flowCurvature(intersectionCorner)).toBe(0);
+    // ...whereas the raw rad/km metric DOES count the corner — that gap is the bug being fixed.
+    expect(sinuosityScore(intersectionCorner)).toBeGreaterThan(flowCurvature(intersectionCorner));
+    expect(sinuosityScore(intersectionCorner)).toBeGreaterThan(0.2);
+  });
+
+  it('rewards a sustained arc of moderate turns', () => {
+    expect(flowCurvature(sweeper)).toBeGreaterThan(1);
+  });
+
+  it('ignores sub-4° digitization jitter on a straight road', () => {
+    expect(flowCurvature(jitterStraight)).toBeLessThan(0.2);
+  });
+
+  it('returns 0 for a fragment shorter than 300 m', () => {
+    expect(flowCurvature([[42.70, -78.80], [42.7005, -78.7995]])).toBe(0);
+  });
+});
 
 describe('haversine', () => {
   it('returns ~0 for identical points', () => {

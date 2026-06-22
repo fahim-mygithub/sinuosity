@@ -1,5 +1,5 @@
 import type { LatLng } from './geometry';
-import { sinuosityScore, curvature10, pathLength, haversine } from './geometry';
+import { sinuosityScore, flowCurvature, pathLength, haversine } from './geometry';
 import type { ScannedRoad, ScoredRoad, ScenicRubric } from '../data/types';
 import { fetchFeatureCatalog, type FeatureCatalog } from './features';
 import { measureRubric } from './sceneryTells';
@@ -258,9 +258,13 @@ export async function scanArea(
     .sort((a, b) => b.curveDensity - a.curveDensity)
     .slice(0, 300);
 
-  const viewPts = catalog.tells.view;
+  // Only VERIFIED viewpoints (named or wiki-tagged) lift notability. Bare `tourism=viewpoint` nodes
+  // are often unverified map-tells (Street-View checks turned up unnamed, off-road, no-imagery
+  // points), so an anonymous one no longer trips the notability floor.
+  const viewPts = catalog.pois
+    .filter((p) => p.kind === 'viewpoint' && (p.notable || !!p.name))
+    .map((p) => p.pt);
   const roads: ScoredRoad[] = candidates.map((r) => {
-    // viewMinM (nearest viewpoint to this road) lifts notability when a viewpoint sits on the road.
     let viewMinM = Infinity;
     for (const c of r.coords) {
       for (const v of viewPts) {
@@ -270,7 +274,7 @@ export async function scanArea(
     }
     const m = measureRubric(r.coords, { ...catalog.tells, viewMinM });
     const rubric: ScenicRubric = {
-      curvature: curvature10(r.coords),
+      curvature: flowCurvature(r.coords), // rideable curve, not junction corners (see geometry.ts)
       scenery: m.scenery,
       greenery: m.greenery,
       water: m.water,

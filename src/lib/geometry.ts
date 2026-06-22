@@ -155,6 +155,35 @@ export function spurApexes(coords: LatLng[], matchM = 30): number[] {
 }
 
 /**
+ * "Rideable" curvature on the 0–10 scale — like {@link curvature10}, but it only counts turning
+ * that a rider experiences as a *flowing curve*. Two corrections matter for the Live scan, where
+ * roads are stitched across junctions:
+ *
+ *  1. **Junction corners don't count.** A turn sharper than ~75° is almost always a road Teeing
+ *     into another (or a stitch joining two ways at an intersection) — "a hard right at an
+ *     intersection," not a sweeper. Those are excluded, so stitching two straight roads at a 90°
+ *     corner no longer fabricates twistiness.
+ *  2. **Digitization jitter doesn't count.** Sub-4° wobble between dense OSM vertices is mapping
+ *     noise, not cornering, so a finely-sampled straight road doesn't read as curvy.
+ *
+ * Geometry is cleaned first (dedup + spur removal). Returns 0 for very short fragments.
+ */
+const FLOW_MIN_TURN = (4 * Math.PI) / 180;
+const FLOW_MAX_TURN = (75 * Math.PI) / 180;
+export function flowCurvature(coords: LatLng[]): number {
+  const pts = cleanCoords(coords);
+  const dist = pathLength(pts);
+  if (dist < 0.3) return 0;
+  let deviation = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const angle = turnAngle(groundVector(pts[i - 1], pts[i]), groundVector(pts[i], pts[i + 1]));
+    if (angle == null || angle < FLOW_MIN_TURN || angle > FLOW_MAX_TURN) continue;
+    deviation += angle;
+  }
+  return Math.round(Math.min(10, (deviation / dist) * 4) * 10) / 10;
+}
+
+/**
  * Index of the point with the sharpest turn (largest angular deviation).
  * Useful for picking route-defining waypoints rather than evenly-spaced ones.
  */
