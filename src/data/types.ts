@@ -8,6 +8,16 @@ export interface ScannedRoad {
   sinuosity: number;
   score: number;
   coords: LatLng[];
+  /** OSM `highway` class (secondary/tertiary/unclassified/...), if tagged. */
+  highway?: string;
+  /** OSM `surface` value, if tagged. */
+  surface?: string;
+  /** Posted speed in mph parsed from OSM `maxspeed`, or `null` when unknown/ambiguous. */
+  maxspeedMph?: number | null;
+  /** Whether the road is paved (unknown surface ⇒ treated as paved). */
+  paved?: boolean;
+  /** OSM `oneway` value, for the loop-closure wrong-way guard. */
+  oneway?: string;
 }
 
 /**

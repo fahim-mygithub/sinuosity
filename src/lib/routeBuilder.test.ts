@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildRides, synthesizeStops } from './routeBuilder';
-import { COMPOSITE_WEIGHTS } from './composite';
+import { buildRides, synthesizeStops, rideabilityFactor } from './routeBuilder';
+import { COMPOSITE_WEIGHTS, compositeScore } from './composite';
 import type { LatLng } from './geometry';
 import type { ScoredRoad, ScenicRubric, ScenicStop } from '../data/types';
 import type { FeatureCatalog, ScenicPOI } from './features';
@@ -60,12 +60,16 @@ describe('buildRides', () => {
     expect(rides).toHaveLength(0);
   });
 
-  it('honors maxRides and returns rides sorted by score descending', () => {
+  it('honors maxRides; .score stays pure composite and the list is ordered by rank (B0/B6)', () => {
     const isolated = (i: number): ScoredRoad =>
       road(`Iso${i}`, -77 - i * 0.1, -77 - i * 0.1 - 0.05, rubric({ curvature: 4 + (i % 4) }));
     const many = Array.from({ length: 6 }, (_, i) => isolated(i));
     const rides = buildRides(many, EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1, maxRides: 3 });
     expect(rides.length).toBeLessThanOrEqual(3);
+    // Purity invariant (M0): every scan ride's .score is EXACTLY the composite of its own rubric.
+    for (const r of rides) expect(r.score).toBe(compositeScore(r.rubric, COMPOSITE_WEIGHTS));
+    // With no speed/surface tags the rideability factor is a constant 1.0, so rank order == score
+    // order; assert the documented descending order (non-strict).
     for (let i = 1; i < rides.length; i++) expect(rides[i - 1].score).toBeGreaterThanOrEqual(rides[i].score);
   });
 
@@ -191,5 +195,172 @@ describe('synthesizeStops', () => {
     const stops = synthesizeStops(coords, pois, rubric());
     const named = stops.filter((s) => s.title === 'A' || s.title === 'B');
     expect(named).toHaveLength(1); // within 600m → only one survives
+  });
+});
+
+// ── Phase B/C hardening edge cases ─────────────────────────────────────────────────────────────
+// A tagged road builder so rideability/shape/time can be exercised. Same geometry shape as `road`.
+function taggedRoad(
+  id: string, lon0: number, lon1: number,
+  tags: Partial<Pick<ScoredRoad, 'highway' | 'surface' | 'maxspeedMph' | 'paved' | 'oneway'>> = {},
+  rub: ScenicRubric = rubric(),
+): ScoredRoad {
+  const r = road(id, lon0, lon1, rub);
+  return { ...r, ...tags };
+}
+
+describe('rideabilityFactor (B5/M6/M7)', () => {
+  it('10) null / unknown maxspeed ⇒ exactly 1.0 (neutral)', () => {
+    expect(rideabilityFactor([taggedRoad('a', -78.84, -78.80)])).toBe(1.0);
+    expect(rideabilityFactor([taggedRoad('a', -78.84, -78.80, { maxspeedMph: null })])).toBe(1.0);
+    expect(rideabilityFactor([])).toBe(1.0);
+  });
+
+  it('penalizes only KNOWN ≤30 and rewards only KNOWN ≥45; stays within [0.6, 1.1]', () => {
+    const slow = rideabilityFactor([taggedRoad('s', -78.84, -78.80, { maxspeedMph: 25 })]);
+    const fast = rideabilityFactor([taggedRoad('f', -78.84, -78.80, { maxspeedMph: 55 })]);
+    expect(slow).toBeLessThan(1.0);
+    expect(fast).toBeGreaterThan(1.0);
+    expect(slow).toBeGreaterThanOrEqual(0.6);
+    expect(fast).toBeLessThanOrEqual(1.1);
+    // A 35 mph leg is neither penalized nor rewarded by the speed term.
+    expect(rideabilityFactor([taggedRoad('m', -78.84, -78.80, { maxspeedMph: 35 })])).toBe(1.0);
+  });
+
+  it('applies a small penalty per KNOWN-unpaved leg; unknown surface stays neutral', () => {
+    expect(rideabilityFactor([taggedRoad('u', -78.84, -78.80, { paved: false })])).toBeLessThan(1.0);
+    expect(rideabilityFactor([taggedRoad('p', -78.84, -78.80, { paved: true })])).toBe(1.0);
+  });
+});
+
+describe('buildRides — used-set rollback & budget (B2)', () => {
+  it('5) a minKm-failing chain frees its roads for a later seed', () => {
+    // A short isolated stub (below minKm) at a HIGH composite so it seeds first, plus a separate
+    // long stitchable pair that clears minKm. The stub must not steal the budget or its own road.
+    const stub = road('Stub Rd', -78.801, -78.80, rubric({ curvature: 9 })); // ~80 m, top composite
+    const a = road('Long A', -78.90, -78.86, rubric({ curvature: 5 }));
+    const b = road('Long B', -78.86, -78.82, rubric({ curvature: 5 }));
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const rides = buildRides([stub, a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 4, maxRides: 8 });
+    // The stub's chain is discarded (< minKm); the long pair still builds a ride.
+    expect(rides.length).toBe(1);
+    expect(rides[0].distanceKm).toBeGreaterThan(5);
+  });
+
+  it('6) two equal-composite spurs near start → no sub-minKm loop, budget not exhausted', () => {
+    // Two tiny equal-composite stubs that share the seed's start node. Neither can form a ride that
+    // clears minKm; the builder must not emit a sub-minKm ride nor burn the whole ride budget.
+    const seed = road('Hub Rd', -78.80, -78.799, rubric({ curvature: 8 })); // tiny
+    const spurA = road('Spur A', -78.799, -78.7985, rubric({ curvature: 8 }));
+    const spurB = road('Spur B', -78.799, -78.7985, rubric({ curvature: 8 }));
+    spurA.coords[0] = seed.coords[seed.coords.length - 1];
+    spurB.coords[0] = seed.coords[seed.coords.length - 1];
+    const rides = buildRides([seed, spurA, spurB], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 4 });
+    expect(rides.length).toBe(0); // nothing clears minKm; no sub-minKm ride leaks out
+  });
+});
+
+describe('buildRides — honest shape (B4/M10)', () => {
+  it('7) two disjoint parallel legs <2 km apart sharing no junction → out-and-back, not loop', () => {
+    // Two roads whose endpoints are euclidean-close but DO NOT share a junction key → no graph
+    // cycle, so it must classify as out-and-back even though the ends are near.
+    const a = road('Parallel A', -78.84, -78.80, rubric());
+    const b = road('Parallel B', -78.80, -78.76, rubric());
+    b.coords[0] = a.coords[a.coords.length - 1]; // they stitch end-to-end (a straight-ish run)
+    const [r] = buildRides([a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    // A straight A→B run does not return near its start → out-and-back copy, never "Loops back".
+    expect(r.summary).toContain('Out-and-back');
+    expect(r.summary).not.toContain('Loops back');
+  });
+
+  it('classifies a triangle that closes through the graph as a loop', () => {
+    // Three legs forming a closed triangle: each leg's tail is the next leg's head, and the third
+    // leg's tail returns to the seed's start node → a REAL graph cycle, euclidean-close.
+    const seg = (id: string, p0: LatLng, p1: LatLng): ScoredRoad => {
+      const n = 10;
+      const coords: LatLng[] = [];
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        coords.push([+(p0[0] + (p1[0] - p0[0]) * t).toFixed(5), +(p0[1] + (p1[1] - p0[1]) * t).toFixed(5)]);
+      }
+      return { id, name: id, curveDensity: 1.2, sinuosity: 5, score: 0, rubric: rubric(), coords };
+    };
+    const A: LatLng = [42.70, -78.80];
+    const B: LatLng = [42.74, -78.80];
+    const C: LatLng = [42.72, -78.74];
+    const ab = seg('AB Rd', A, B);
+    const bc = seg('BC Rd', B, C);
+    const ca = seg('CA Rd', C, A);
+    bc.coords[0] = ab.coords[ab.coords.length - 1]; // share B
+    ca.coords[0] = bc.coords[bc.coords.length - 1]; // share C
+    ca.coords[ca.coords.length - 1] = ab.coords[0]; // close back to A
+    const [r] = buildRides([ab, bc, ca], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1, targetKm: 20 });
+    expect(r.summary).toContain('Loops back');
+    expect(r.summary).not.toContain('Out-and-back');
+  });
+
+  it('a notable out-and-back is a "Landmark Run", never "Landmark Loop"', () => {
+    const a = road('Vista A', -78.84, -78.80, rubric({ notability: 9, curvature: 1, scenery: 1 }));
+    const b = road('Vista B', -78.80, -78.76, rubric({ notability: 9, curvature: 1, scenery: 1 }));
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const onRoute = a.coords[3];
+    const cat: FeatureCatalog = {
+      tells: { ...EMPTY_CATALOG.tells, view: [onRoute] },
+      pois: [{ pt: onRoute, name: 'Old Mill', kind: 'viewpoint', notable: true, weight: 1 }],
+    };
+    const [r] = buildRides([a, b], cat, { bias: { curvature: 0, scenery: 0, greenery: 0, water: 0, notability: 1 }, minKm: 1 });
+    // A named/verified viewpoint lifts notability ≥ 7 (see honesty pass), so the descriptor fires;
+    // it must be the out-and-back form, never the loop form.
+    expect(r.rubric.notability).toBeGreaterThanOrEqual(5);
+    expect(r.name).toContain('Landmark Run');
+    expect(r.name).not.toContain('Landmark Loop');
+  });
+});
+
+describe('buildRides — robustness & invariants (B6, edge)', () => {
+  it('8) a tiny-radius scan (one short road) does not regress to []', () => {
+    // One road that just clears minKm on its own — must still produce a ride, not an empty list.
+    const solo = road('Solo Rd', -78.86, -78.80, rubric()); // ~5 km
+    const rides = buildRides([solo], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(rides.length).toBeGreaterThanOrEqual(1);
+    expect(rides[0].coords.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('9) ride.score === compositeScore(ride.rubric, bias) for EVERY ride', () => {
+    const bias = { curvature: 0.5, scenery: 0.2, greenery: 0.1, water: 0.1, notability: 0.1 };
+    const a = road('Honest A', -78.90, -78.86, rubric({ curvature: 7 }));
+    const b = road('Honest B', -78.86, -78.82, rubric({ curvature: 7 }));
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const c = road('Honest C', -77.5, -77.44, rubric({ curvature: 3 }));
+    const rides = buildRides([a, b, c], EMPTY_CATALOG, { bias, minKm: 1 });
+    expect(rides.length).toBeGreaterThan(0);
+    for (const r of rides) expect(r.score).toBe(compositeScore(r.rubric, bias));
+  });
+
+  it('11) all-tags-absent ⇒ rideability constant 1.0 ⇒ ordering is purely composite', () => {
+    const mk = (i: number, curv: number) => road(`R${i}`, -77 - i * 0.2, -77 - i * 0.2 - 0.06, rubric({ curvature: curv }));
+    const roads = [mk(0, 3), mk(1, 8), mk(2, 5)];
+    const rides = buildRides(roads, EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1, maxRides: 8 });
+    // Every ride had no speed/surface tags ⇒ factor is exactly 1.0 ⇒ rank order == score order.
+    const scores = rides.map((r) => r.score);
+    expect([...scores].sort((x, y) => y - x)).toEqual(scores);
+  });
+
+  it('12) a maxed-rubric scan ride keeps score ≤ 100', () => {
+    const a = road('Max A', -78.90, -78.86, rubric({ curvature: 10, scenery: 10, greenery: 10, water: 10, notability: 10 }));
+    const b = road('Max B', -78.86, -78.82, rubric({ curvature: 10, scenery: 10, greenery: 10, water: 10, notability: 10 }));
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const [r] = buildRides([a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.score).toBeLessThanOrEqual(100);
+    expect(r.score).toBeGreaterThanOrEqual(0);
+  });
+
+  it('8b) scan drivingTime derives from chain-weighted known posted speed (B8)', () => {
+    // A chain of 45 mph roads should yield a slower (longer) time than the 55 fallback default.
+    const a = taggedRoad('Fast A', -78.90, -78.86, { maxspeedMph: 45 });
+    const b = taggedRoad('Fast B', -78.86, -78.82, { maxspeedMph: 45 });
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const [r] = buildRides([a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.drivingTime).toMatch(/min|h/);
   });
 });

@@ -1,4 +1,4 @@
-import { haversine, pathLength, cleanCoords, flowCurvature, bearing, type LatLng } from './geometry';
+import { haversine, pathLength, cleanCoords, flowCurvature, bearing, dropBacktracks, type LatLng } from './geometry';
 import { measureRubric, pointInRing, OPEN_WATER_W, MINOR_WATER_W, type RubricTells } from './sceneryTells';
 import { compositeScore, type BiasWeights } from './composite';
 import type { FeatureCatalog, ScenicPOI } from './features';
@@ -31,15 +31,32 @@ const round4 = (n: number) => n.toFixed(4);
 const key = (p: LatLng) => `${round4(p[0])},${round4(p[1])}`;
 const reversed = (c: LatLng[]) => [...c].reverse();
 
+const RETURN_BIAS = 0.6; // homeward pull strength, capped so it can never starve a ride below minKm
+const RETURN_EPS = 0.05; // km — a biased pick must reduce dist-to-start by at least this to be taken
+const TAIL_CAP = 18; // max roads in a chain (raised from 14 to offset dropped head-growth)
+
+/** Shape of a stitched ride. A `loop` returns near its start through the graph; everything else is
+ *  an honest `out-and-back` (you retrace to come home). */
+export type RideShape = 'loop' | 'out-and-back';
+
+/** Loop-closure radius (km) for shape classification — tighter than growth. clamp(target*0.08,0.3,2). */
+function loopCloseKm(targetKm: number): number {
+  return Math.min(2.0, Math.max(0.3, targetKm * 0.08));
+}
+
 /**
  * Build rides from the scored candidate roads. Pure + deterministic: same roads + same bias ⇒ same
  * rides, so re-running on a bias-slider change (no network) is cheap and stable.
+ *
+ * Output is sorted by an internal `rank = score * rideabilityFactor` (B6); `.score` itself stays a
+ * PURE composite of the re-measured rubric so the 0–100 badge always matches the rubric meters.
  */
 export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: BuildOptions): ScenicRoute[] {
   const targetKm = opts.targetKm ?? 22;
   const minKm = opts.minKm ?? 4;
   const maxRides = opts.maxRides ?? 8;
   const bias = opts.bias;
+  const closeKm = loopCloseKm(targetKm);
 
   // Composite under the current bias decides both seed order and which neighbour to chain next.
   const comp = roads.map((r) => compositeScore(r.rubric, bias));
@@ -59,60 +76,201 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
     addEnd(key(r.coords[r.coords.length - 1]), i);
   });
 
+  // Committed roads (B2): a chain reserves indices in `claimed`; they join `used` ONLY after the
+  // minKm/length gate passes, so a discarded chain frees its roads for later seeds.
   const used = new Set<number>();
-  const bestUnusedAt = (k: string, self: number): number | null => {
-    let best: number | null = null;
-    for (const i of endpoints.get(k) ?? []) {
-      if (i === self || used.has(i)) continue;
-      if (best === null || comp[i] > comp[best]) best = i;
-    }
-    return best;
-  };
 
-  const rides: ScenicRoute[] = [];
+  const built: { route: ScenicRoute; rank: number }[] = [];
   let palette = 0;
 
   for (const seed of order) {
-    if (rides.length >= maxRides) break;
+    if (built.length >= maxRides) break;
     if (used.has(seed)) continue;
-    used.add(seed);
 
-    const chain: LatLng[][] = [roads[seed].coords];
+    const seedRoad = roads[seed];
+    if (seedRoad.coords.length < 2) continue;
+    const start = seedRoad.coords[0]; // the TRUE anchor — tail-only growth keeps it fixed (B3)
+
+    const claimed = new Set<number>([seed]);
+    const isFree = (i: number) => !used.has(i) && !claimed.has(i);
+
+    const chain: LatLng[][] = [seedRoad.coords];
+    const chainRoads: ScoredRoad[] = [seedRoad];
     const chainKm = () => chain.reduce((s, c) => s + pathLength(c), 0);
 
-    // Grow off the tail.
-    let tailKey = key(roads[seed].coords[roads[seed].coords.length - 1]);
-    while (chainKm() < targetKm && chain.length < 14) {
-      const next = bestUnusedAt(tailKey, seed);
-      if (next === null) break;
-      used.add(next);
-      let nc = roads[next].coords;
+    // The candidate road's endpoint that is NOT the current tail (i.e. where the chain would
+    // advance to if we appended it).
+    const farEndpoint = (i: number, fromKey: string): LatLng => {
+      const c = roads[i].coords;
+      return key(c[0]) === fromKey ? c[c.length - 1] : c[0];
+    };
+    const distToStart = (p: LatLng) => haversine(p, start);
+
+    // Tail-only growth (B3). Composite stays dominant; past the halfway mark a homeward NUDGE is
+    // applied and accepted only if it strictly reduces distance-to-start. RETURN_BIAS is capped and
+    // a dead-ended biased walk falls back to the un-biased best (never returns less than today).
+    let tailKey = key(seedRoad.coords[seedRoad.coords.length - 1]);
+    while (chainKm() < targetKm && chain.length < TAIL_CAP) {
+      const km = chainKm();
+      const progress = Math.max(0, Math.min(1, (km - targetKm * 0.5) / (targetKm * 0.5)));
+
+      const candidates: number[] = [];
+      for (const i of endpoints.get(tailKey) ?? []) {
+        if (i === seed || !isFree(i)) continue;
+        candidates.push(i);
+      }
+      if (!candidates.length) break;
+
+      // Un-biased best (the fallback that guarantees we never grow LESS than before).
+      let best = candidates[0];
+      for (const i of candidates) if (comp[i] > comp[best]) best = i;
+
+      let pick = best;
+      if (progress > 0 && RETURN_BIAS > 0) {
+        const tailPt = lastPoint(chain);
+        const curTailDist = distToStart(tailPt);
+        let bestBiased: number | null = null;
+        let bestBiasedScore = -Infinity;
+        for (const i of candidates) {
+          const fe = farEndpoint(i, tailKey);
+          const s = comp[i] - RETURN_BIAS * progress * distToStart(fe);
+          if (s > bestBiasedScore) { bestBiasedScore = s; bestBiased = i; }
+        }
+        if (bestBiased !== null) {
+          const newTailDist = distToStart(farEndpoint(bestBiased, tailKey));
+          // Accept the homeward pick ONLY if it strictly gets us closer to start.
+          if (newTailDist < curTailDist - RETURN_EPS) pick = bestBiased;
+        }
+      }
+
+      claimed.add(pick);
+      let nc = roads[pick].coords;
       if (key(nc[0]) !== tailKey) nc = reversed(nc);
       chain.push(nc);
+      chainRoads.push(roads[pick]);
       tailKey = key(nc[nc.length - 1]);
     }
-    // Grow off the head.
-    let headKey = key(roads[seed].coords[0]);
-    while (chainKm() < targetKm && chain.length < 14) {
-      const prev = bestUnusedAt(headKey, seed);
-      if (prev === null) break;
-      used.add(prev);
-      let pc = roads[prev].coords;
-      if (key(pc[pc.length - 1]) !== headKey) pc = reversed(pc);
-      chain.unshift(pc);
-      headKey = key(pc[0]);
-    }
 
-    const merged = cleanCoords(chain.flat());
-    const coords = downsample(merged, 150);
+    // C2 wire order: clean (flat) → dropBacktracks(start, shape) → downsample(150) → recompute km.
+    const cleaned = cleanCoords(chain.flat());
+    const shape = classifyShape(cleaned, chain, chainRoads, start, closeKm);
+    // bandM < the smallest legitimate limb offset: a 40–60 m hairpin's parallel limbs fall OUTSIDE
+    // the 25 m band → not read as a retrace → preserved (spec C1 hairpin invariant), while a true
+    // draw-over-itself backtrack (near-coincident limbs, <25 m) still collapses. This decouples
+    // bandM from rejoinM's default (=rejoinM) so the production wiring honours the hardening
+    // hairpin-preservation invariant, which overrides the bandM=rejoinM default.
+    const debacktracked = dropBacktracks(cleaned, { start, shape, loopCloseKm: closeKm, bandM: 25 });
+    const coords = downsample(debacktracked, 150);
     const km = pathLength(coords);
-    if (km < minKm || coords.length < 4) continue;
+    if (km < minKm || coords.length < 4) continue; // discard → claimed roads stay free (B2)
 
-    rides.push(toScenicRoute(coords, km, roads[seed], chain, catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel));
+    // Commit: the chain is a keeper, so its roads are now used.
+    for (const i of claimed) used.add(i);
+
+    const route = toScenicRoute(
+      coords, km, seedRoad, chain, chainRoads, shape,
+      catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel,
+    );
+    built.push({ route, rank: rideRank(route, chainRoads) });
     palette++;
   }
 
-  return rides.sort((a, b) => b.score - a.score);
+  // Sort by internal rank (score × rideability); .score itself is untouched/pure (B6).
+  built.sort((a, b) => b.rank - a.rank);
+  return built.map((b) => b.route);
+}
+
+/** Last coordinate of a chain of polylines. */
+function lastPoint(chain: LatLng[][]): LatLng {
+  const last = chain[chain.length - 1];
+  return last[last.length - 1];
+}
+
+/**
+ * Honest shape classification (B4/M10). A ride is a `loop` ONLY when the walk closes through the
+ * graph — its tail endpoint coincides (by junction key) with a node already on the chain or the
+ * start node, a REAL cycle — AND the start/end are euclidean-close (`≤ loopCloseKm`). Euclidean
+ * proximity is necessary, not sufficient. A closure that would require driving a `oneway` road the
+ * wrong way is refused. Everything else is an honest `out-and-back`.
+ */
+function classifyShape(
+  coords: LatLng[],
+  chain: LatLng[][],
+  chainRoads: ScoredRoad[],
+  start: LatLng,
+  closeKm: number,
+): RideShape {
+  if (coords.length < 2) return 'out-and-back';
+  const end = coords[coords.length - 1];
+  if (haversine(start, end) > closeKm) return 'out-and-back';
+
+  // Graph closure: the tail's junction key must match a junction already visited on the chain
+  // (the start node or any internal seam). Collect every junction key the chain passes through.
+  const tailKey = key(lastPoint(chain));
+  const visited = new Set<string>();
+  // start of the chain
+  visited.add(key(chain[0][0]));
+  // each seam between consecutive legs is a shared junction; also the head of each leg
+  for (let k = 0; k < chain.length - 1; k++) {
+    visited.add(key(chain[k][chain[k].length - 1]));
+  }
+  if (!visited.has(tailKey)) return 'out-and-back';
+
+  // Wrong-way guard: refuse a closure whose final leg is a oneway traversed backwards.
+  const lastRoad = chainRoads[chainRoads.length - 1];
+  if (lastRoad && isOneway(lastRoad.oneway)) {
+    const lastLeg = chain[chain.length - 1];
+    // The leg was oriented head→tail during growth; a oneway is only legal forward (matching its
+    // own coord order). If we reversed it to stitch, the closure drives it backwards → refuse.
+    const original = lastRoad.coords;
+    const orientedReversed = key(lastLeg[0]) === key(original[original.length - 1]);
+    if (orientedReversed) return 'out-and-back';
+  }
+
+  return 'loop';
+}
+
+/** Whether an OSM `oneway` tag means the road is directed (yes/true/1/-1). `no`/absent ⇒ false. */
+function isOneway(oneway?: string): boolean {
+  if (!oneway) return false;
+  const v = oneway.trim().toLowerCase();
+  return v === 'yes' || v === 'true' || v === '1' || v === '-1';
+}
+
+const RIDEABILITY_MIN = 0.6;
+const RIDEABILITY_MAX = 1.1;
+
+/**
+ * Rideability multiplier in [0.6, 1.1] from the chain's per-leg tags (B5/M6/M7). NEVER touches
+ * `.score` — it only re-orders the list. Neutrality is the contract: a chain with no known speeds
+ * and no known-unpaved legs returns EXACTLY 1.0, so an untagged WNY backroad ranks on geometry as
+ * it does today. We penalize only KNOWN ≤30 mph, reward only KNOWN ≥45 mph, give a small class
+ * bonus to tertiary/secondary over unclassified, and a small penalty per known-unpaved leg.
+ */
+export function rideabilityFactor(chainRoads: ScoredRoad[]): number {
+  if (!chainRoads.length) return 1.0;
+  let factor = 1.0;
+  for (const r of chainRoads) {
+    const v = r.maxspeedMph;
+    if (v != null) {
+      if (v <= 30) factor -= 0.05; // slow/urban leg — known low speed only
+      else if (v >= 45) factor += 0.03; // open, sweeping leg — known high speed only
+    }
+    // Small class bonus: tertiary/secondary tend to be the good motorcycle roads.
+    if (r.highway === 'tertiary' || r.highway === 'secondary') factor += 0.01;
+    // Small penalty per KNOWN-unpaved leg (paved===false only; unknown surface stays neutral).
+    if (r.paved === false) factor -= 0.04;
+  }
+  return Math.max(RIDEABILITY_MIN, Math.min(RIDEABILITY_MAX, factor));
+}
+
+/**
+ * Internal ranking key (B6): the pure composite `.score` scaled by {@link rideabilityFactor}. Shape
+ * is only a tie-breaker — there is NO score multiplier for an out-and-back (the old flat ×0.9 is
+ * gone). Exported so the ordering test can assert the documented order without re-deriving it.
+ */
+export function rideRank(route: ScenicRoute, chainRoads: ScoredRoad[]): number {
+  return route.score * rideabilityFactor(chainRoads);
 }
 
 /** Evenly downsample a dense polyline so the drawn line stays smooth and the URL stays short. */
@@ -176,6 +334,8 @@ function toScenicRoute(
   km: number,
   seed: ScoredRoad,
   chain: LatLng[][],
+  chainRoads: ScoredRoad[],
+  shape: RideShape,
   catalog: FeatureCatalog,
   bias: BiasWeights,
   color: string,
@@ -205,7 +365,10 @@ function toScenicRoute(
   const greenContain = m.provenance?.greenContain ?? 0;
   const stops = synthesizeStops(coords, catalog.pois, rubric, shore);
   const { theme, summary, whyRide } = describe(rubric, km, { shore, creek, greenContain, stopCount: stops.length });
-  const name = rideName(seed, chain, rubric, { shore, creek, greenContain });
+  // Shape clause appended to copy only; the theme cascade & descriptors stay byte-for-byte (B7).
+  const startEndGapKm = coords.length >= 2 ? haversine(coords[0], coords[coords.length - 1]) : 0;
+  const shapeClause = shapeClauseFor(shape, startEndGapKm);
+  const name = rideName(seed, chain, rubric, shape, { shore, creek, greenContain });
 
   return {
     id: `scan-${seed.id}-${Math.round(km * 10)}-${coords.length}`,
@@ -213,15 +376,45 @@ function toScenicRoute(
     theme,
     region: areaLabel ? `near ${areaLabel}` : 'Live scan',
     distanceKm: +km.toFixed(1),
-    drivingTime: formatMinutes((km / 55) * 60),
-    summary,
-    whyRide,
+    drivingTime: formatMinutes((km / scanSpeedMph(chainRoads)) * 60),
+    summary: `${summary} ${shapeClause}`,
+    whyRide: `${whyRide} ${shapeClause}`,
     rubric,
     score,
     color,
     coords,
     stops,
   };
+}
+
+/**
+ * Shape clause for the ride copy (B7/N4). A loop notes it returns near the start; an out-and-back
+ * is upfront that you retrace your path. When the start/finish gap is non-trivial we report the
+ * distance instead of promising a clean return.
+ */
+function shapeClauseFor(shape: RideShape, gapKm: number): string {
+  if (shape === 'loop') return 'Loops back near where it starts.';
+  if (gapKm >= 1) return `Out-and-back — you'll retrace your path to return. Ends about ${gapKm.toFixed(0)} km from the start.`;
+  return "Out-and-back — you'll retrace your path to return.";
+}
+
+/**
+ * Scan-path driving speed (mph) for the time estimate (B8/M12): the chain-weighted average of the
+ * KNOWN posted speeds (each leg weighted by its length), clamped to a sane 25–60 mph band. Falls
+ * back to 55 when no leg has a known posted speed (today's behaviour). Baked datasets untouched.
+ */
+function scanSpeedMph(chainRoads: ScoredRoad[]): number {
+  let wSum = 0;
+  let lenSum = 0;
+  for (const r of chainRoads) {
+    if (r.maxspeedMph == null) continue;
+    const len = pathLength(r.coords);
+    if (len <= 0) continue;
+    wSum += r.maxspeedMph * len;
+    lenSum += len;
+  }
+  if (lenSum <= 0) return 55;
+  return Math.max(25, Math.min(60, wSum / lenSum));
 }
 
 const STOP_NEAR_M = 450; // a feature this close to the corridor is "on the ride"
@@ -395,14 +588,17 @@ function describe(rubric: ScenicRubric, km: number, ctx: RideContext): { theme: 
 
 /** Name a ride after the strongest-named road in its chain, plus an HONEST terrain descriptor
  *  (Shoreline only for real shoreline; Creek Run for creek-adjacent; Woodland needs containment). */
-function rideName(seed: ScoredRoad, chain: LatLng[][], rubric: ScenicRubric, ctx: { shore: number; creek: number; greenContain: number }): string {
+function rideName(seed: ScoredRoad, chain: LatLng[][], rubric: ScenicRubric, shape: RideShape, ctx: { shore: number; creek: number; greenContain: number }): string {
   const base = seed.name && seed.name !== 'Unnamed road' ? seed.name : null;
+  // Notable descriptor is shape-aware: only a genuine loop earns "Landmark Loop"; an out-and-back
+  // notable ride is a "Landmark Run" so the name never promises a loop it doesn't make (B7/M11).
+  const landmark = shape === 'loop' ? 'Landmark Loop' : 'Landmark Run';
   const descriptor =
     ctx.shore >= TRUE_SHORE_FRAC ? 'Shoreline Run'
       : ctx.greenContain >= WOODED_CONTAIN ? 'Woodland Run'
         : rubric.curvature >= 6 ? 'Carver'
           : ctx.creek >= CREEK_FRAC ? 'Creek Run'
-            : rubric.notability >= 5 ? 'Landmark Loop'
+            : rubric.notability >= 5 ? landmark
               : rubric.curvature >= 4 ? 'Run'
                 : 'Backroad';
   if (base) return chain.length > 1 ? `${base} ${descriptor}` : base;

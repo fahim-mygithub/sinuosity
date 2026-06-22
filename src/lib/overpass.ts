@@ -1,5 +1,5 @@
 import type { LatLng } from './geometry';
-import { sinuosityScore, flowCurvature, pathLength, haversine } from './geometry';
+import { sinuosityScore, flowCurvature, pathLength, haversine, parseMaxspeedMph, isPaved } from './geometry';
 import type { ScannedRoad, ScoredRoad, ScenicRubric } from '../data/types';
 import { fetchFeatureCatalog, type FeatureCatalog } from './features';
 import { measureRubric } from './sceneryTells';
@@ -134,6 +134,7 @@ function parseRoads(elements: OverpassElement[]): ScannedRoad[] {
     if (pts.length <= 3) continue;
 
     const s = sinuosityScore(pts);
+    const surface = el.tags?.surface;
     roads.push({
       id: `scan-${el.id}`,
       name: el.tags?.name ?? 'Unnamed road',
@@ -141,6 +142,11 @@ function parseRoads(elements: OverpassElement[]): ScannedRoad[] {
       sinuosity: Math.min(10, s * 4),
       score: Math.min(100, Math.round(s * 30)),
       coords: pts,
+      highway: el.tags?.highway,
+      surface,
+      maxspeedMph: parseMaxspeedMph(el.tags?.maxspeed),
+      paved: isPaved(surface),
+      oneway: el.tags?.oneway,
     });
   }
   return roads;

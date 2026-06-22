@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { haversine, pathLength, sinuosityScore, sharpestTurnIndices, flowCurvature, type LatLng } from './geometry';
+import { haversine, pathLength, sinuosityScore, sharpestTurnIndices, flowCurvature, dropBacktracks, cumulativeKm, type LatLng } from './geometry';
 
 describe('flowCurvature', () => {
   // A straight road that makes ONE 90° turn into a side street (the intersection-corner case).
@@ -82,6 +82,66 @@ describe('sinuosityScore', () => {
       [42.7, -78.7], [42.72, -78.68], [42.74, -78.66], [42.76, -78.64], [42.78, -78.62],
     ];
     expect(sinuosityScore(diagonal)).toBeLessThan(0.05);
+  });
+});
+
+describe('dropBacktracks', () => {
+  // Helper: build a straight east-west line of `n` points spanning lon0..lon1 at fixed lat.
+  const line = (lat: number, lon0: number, lon1: number, n: number): LatLng[] =>
+    Array.from({ length: n }, (_, i) => [lat, +(lon0 + (lon1 - lon0) * (i / (n - 1))).toFixed(6)] as LatLng);
+
+  it('1) preserves a 40–60 m-spaced hairpin at the SHIPPING bandM (offset limbs do not retrace)', () => {
+    // A hairpin: out along one lat, U-turn, back along a parallel lat ~50 m north. The two limbs
+    // are offset ~50 m everywhere. The production call (routeBuilder.ts) ships bandM: 25, which is
+    // tighter than the limb offset → limbs are NOT seen as a retrace → preserved. We assert with the
+    // SAME bandM the app actually runs, so this test verifies real shipping behaviour (no special-
+    // cased config). rejoinM stays at its 70 default to mirror production.
+    const SHIPPING_BAND_M = 25;
+    const dLat = 0.00045; // ~50 m north
+    const out: LatLng[] = line(42.70, -78.80, -78.78, 6);
+    const back: LatLng[] = line(42.70 + dLat, -78.78, -78.80, 6);
+    const hairpin = [...out, ...back];
+    const result = dropBacktracks(hairpin, { rejoinM: 70, bandM: SHIPPING_BAND_M, minArcKm: 0.3 });
+    expect(result.length).toBe(hairpin.length);
+  });
+
+  it('2) preserves both lobes of a figure-eight (lobes diverge, no retrace)', () => {
+    // Two loops meeting at a crossing point; neither lobe retraces the other.
+    const lobe = (cLat: number, cLon: number, r: number, n: number): LatLng[] =>
+      Array.from({ length: n }, (_, k) => {
+        const a = (k / (n - 1)) * 2 * Math.PI;
+        return [cLat + r * Math.sin(a), cLon + r * (1 - Math.cos(a))] as LatLng;
+      });
+    const fig8 = [...lobe(42.70, -78.80, 0.01, 14), ...lobe(42.70, -78.80, -0.01, 14)];
+    const result = dropBacktracks(fig8, { rejoinM: 70, minArcKm: 0.3 });
+    expect(result.length).toBe(fig8.length);
+  });
+
+  it('3) collapses an end-of-ride dead-end spur on an out-and-back (Eddy regression)', () => {
+    // Main line, then a spur that drives out and retraces straight back over itself to the rejoin.
+    const main = line(42.70, -78.80, -78.75, 10);
+    const tip: LatLng = [42.71, -78.75];
+    // out to the tip and back along the SAME geometry (true retrace)
+    const spurOut = [[42.705, -78.75], tip] as LatLng[];
+    const spurBack = [tip, [42.705, -78.75]] as LatLng[];
+    const withSpur = [...main, ...spurOut, ...spurBack, [42.70, -78.75]] as LatLng[];
+    const before = withSpur.length;
+    const result = dropBacktracks(withSpur, { rejoinM: 120, minArcKm: 0.2, shape: 'out-and-back' });
+    expect(result.length).toBeLessThan(before); // the retracing spur collapsed
+  });
+
+  it('4) never returns < 4 points; distanceKm consistency via cumulativeKm', () => {
+    const tiny: LatLng[] = [[42.70, -78.80], [42.70, -78.79], [42.70, -78.78]];
+    expect(dropBacktracks(tiny).length).toBe(3); // < 4 in, returned untouched
+
+    const main = line(42.70, -78.80, -78.75, 10);
+    const tip: LatLng = [42.71, -78.75];
+    const withSpur = [...main, [42.705, -78.75], tip, [42.705, -78.75], [42.70, -78.75]] as LatLng[];
+    const result = dropBacktracks(withSpur, { rejoinM: 120, minArcKm: 0.2 });
+    expect(result.length).toBeGreaterThanOrEqual(4);
+    // pathLength of the result equals the final cumulativeKm entry (internal consistency).
+    const cum = cumulativeKm(result);
+    expect(cum[cum.length - 1]).toBeCloseTo(pathLength(result), 9);
   });
 });
 

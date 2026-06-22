@@ -20,6 +20,80 @@ export function pathLength(coords: LatLng[]): number {
   return d;
 }
 
+/**
+ * Prefix-sum of path length: `cumulativeKm(coords)[k]` is the distance (km) from `coords[0]` to
+ * `coords[k]`. The length of any sub-arc `i→j` is then `cum[j] - cum[i]` in O(1), which lets the
+ * backtrack-detector (Phase C) avoid an O(n³) re-summation. Mirrors {@link pathLength}: the final
+ * entry equals `pathLength(coords)`. Returns `[]` for an empty input and `[0]` for a single point.
+ */
+export function cumulativeKm(coords: LatLng[]): number[] {
+  const cum: number[] = [];
+  let d = 0;
+  for (let i = 0; i < coords.length; i++) {
+    if (i > 0) d += haversine(coords[i - 1], coords[i]);
+    cum.push(d);
+  }
+  return cum;
+}
+
+/**
+ * Surface values OSM uses for roads that are NOT sealed. A leg on one of these is demoted by the
+ * scan's rideability factor (it is never hard-dropped from the corpus — an unpaved way is often the
+ * shared junction that chains two paved sweepers, so deleting it fragments the graph). See M7.
+ */
+export const UNPAVED = new Set([
+  'unpaved', 'gravel', 'fine_gravel', 'compacted', 'dirt', 'ground', 'earth',
+  'grass', 'sand', 'pebblestone', 'mud', 'woodchips',
+]);
+
+/**
+ * Whether a road with this OSM `surface` value is paved. **Unknown ⇒ true** on purpose: most WNY
+ * tertiary/unclassified roads are paved but untagged, so an absent/unrecognized surface must not
+ * demote the road. Only an explicit {@link UNPAVED} value returns `false`. See M6/M7.
+ */
+export function isPaved(surface?: string): boolean {
+  if (!surface) return true;
+  return !UNPAVED.has(surface.trim().toLowerCase());
+}
+
+const KMH_TO_MPH = 0.621;
+
+/**
+ * Parse an OSM `maxspeed` value to mph, or `null` when unknown/ambiguous. Grammar (M6):
+ *  - lowercase + trim; empty/undefined → `null`.
+ *  - `none` → `70` (autobahn sentinel; high so it is never penalized); `walk` → `3`.
+ *  - `signals`, `variable`, and country-coded values (`/^[a-z]{2}:/`, e.g. `ru:rural`,
+ *    `de:urban`) → `null`.
+ *  - explicit knots (`knots`/`kn`) → `null` (not a road speed).
+ *  - otherwise split on `;` and take the **minimum** documented numeric value (the safer penalty
+ *    signal). Per token: `N mph` → N; `N km/h|kmh|kph` → convert (`*0.621`, rounded); a **bare
+ *    number** is km/h per OSM convention → convert.
+ *
+ * This returns the numeric mph only. The *neutrality* of an unknown speed (null ⇒ no penalty) is
+ * enforced later in `rideabilityFactor`, not here.
+ */
+export function parseMaxspeedMph(raw?: string): number | null {
+  if (!raw) return null;
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+  if (s === 'none') return 70;
+  if (s === 'walk') return 3;
+  if (s === 'signals' || s === 'variable') return null;
+  if (/^[a-z]{2}:/.test(s)) return null;
+  if (/\b(knots|kn)\b/.test(s)) return null;
+
+  let min: number | null = null;
+  for (const token of s.split(';')) {
+    const m = token.match(/([0-9]+(?:\.[0-9]+)?)\s*(mph|km\/h|kmh|kph)?/);
+    if (!m) continue;
+    const n = parseFloat(m[1]);
+    if (!isFinite(n)) continue;
+    const mph = m[2] === 'mph' ? n : Math.round(n * KMH_TO_MPH);
+    if (min === null || mph < min) min = mph;
+  }
+  return min;
+}
+
 /** Initial compass bearing a → b, degrees 0..359 (0 = north). Used to aim a stop's Street View
  *  camera from the road toward the feature beside it. */
 export function bearing(a: LatLng, b: LatLng): number {
@@ -181,6 +255,121 @@ export function flowCurvature(coords: LatLng[]): number {
     deviation += angle;
   }
   return Math.round(Math.min(10, (deviation / dist) * 4) * 10) / 10;
+}
+
+/**
+ * Options for {@link dropBacktracks}.
+ *  - `rejoinM`   — two vertices this close (m) are a candidate rejoin (the line comes back to itself).
+ *  - `minArcKm`  — the along-path gap `i→j` must be at least this long to be considered an excursion
+ *                  (so a tight legitimate hairpin within a few hundred metres is never collapsed).
+ *  - `bandM`     — Fréchet-style retrace band (m): the outbound half must run within this of the
+ *                  return half for the excursion to count as an actual retrace (defaults to `rejoinM`).
+ *  - `start`     — ride start anchor; with `shape==='loop'` the intended closure seam is exempted.
+ *  - `shape`     — `'loop'` enables the loop-seam guard; `'out-and-back'` does NOT exempt an end spur.
+ */
+export interface DropBacktracksOpts {
+  rejoinM?: number;
+  minArcKm?: number;
+  bandM?: number;
+  start?: LatLng;
+  shape?: 'loop' | 'out-and-back';
+  /** Loop-close radius (km) used to size the seam-guard exemption; mirrors routeBuilder's gate. */
+  loopCloseKm?: number;
+}
+
+const EXCURSION_RATIO = 1.8; // arc(i→j) must exceed this × straight(i→j) to read as a there-and-back
+const MAX_COLLAPSE_FRAC = 0.4; // a single collapse may never remove more than this fraction of pts
+
+/**
+ * Remove a mid-route backtrack / dead-end spur: a stretch where the line runs out to some point and
+ * RETRACES itself back to (near) where it left the main path, drawing over itself and inflating
+ * distance. This is the runtime twin of {@link cleanCoords}'s spur removal, but it works on the
+ * *rejoin* geometry (two far-apart-along-the-path vertices that sit close in space) rather than a
+ * single U-turn apex, so it catches an end-of-ride out-and-back spur that cleanCoords' apex test
+ * misses (the Eddy's-Overlook bug).
+ *
+ * For each `j` it finds the EARLIEST `i` such that:
+ *   1. along-path gap arc(i→j) ≥ `minArcKm` (a real excursion, not adjacent vertices),
+ *   2. the endpoints rejoin: `metersBetween(coords[i], coords[j]) ≤ rejoinM`,
+ *   3. the excursion is there-and-back-shaped: arc(i→j) ≥ EXCURSION_RATIO × straight(i→j), AND
+ *   4. the interior actually RETRACES: midpoints of the outbound half sit within `bandM` of the
+ *      return half (a Fréchet-style band). A 40–60 m-spaced hairpin (limbs offset) and a
+ *      figure-eight crossing (lobes diverge) do NOT retrace, so both are preserved.
+ * The interior `i+1..j-1` is then collapsed to a single pass-through.
+ *
+ * Guards: a single collapse may not remove > {@link MAX_COLLAPSE_FRAC} of the points (so a chance
+ * self-approach can't amputate a whole lobe); the output is never < 4 points; and when
+ * `shape==='loop'` the intended start/finish seam (both endpoints near `start`) is exempted. Uses
+ * {@link cumulativeKm} for O(1) sub-arc lengths.
+ */
+export function dropBacktracks(coords: LatLng[], opts: DropBacktracksOpts = {}): LatLng[] {
+  const rejoinM = opts.rejoinM ?? 70;
+  const bandM = opts.bandM ?? rejoinM;
+  const minArcKm = opts.minArcKm ?? 0.3;
+  if (coords.length < 4) return coords;
+
+  // Seam-guard sizing: only meaningful for a true loop with a known start.
+  const seamGuard = opts.shape === 'loop' && opts.start != null;
+  const seamRadiusKm = opts.loopCloseKm ?? 2.0;
+
+  let pts = coords;
+  let cum = cumulativeKm(pts);
+
+  let j = pts.length - 1;
+  while (j >= 0) {
+    let collapsed = false;
+    for (let i = 0; i < j - 1; i++) {
+      const arc = cum[j] - cum[i];
+      if (arc < minArcKm) continue; // earliest i is the largest excursion; once arc<min, no further i qualifies
+      if (metersBetween(pts[i], pts[j]) > rejoinM) continue;
+
+      // Loop closure seam: the deliberate start↔finish rejoin must not be collapsed.
+      if (seamGuard) {
+        const di = haversine(pts[i], opts.start!);
+        const dj = haversine(pts[j], opts.start!);
+        if (di <= seamRadiusKm && dj <= seamRadiusKm) continue;
+      }
+
+      const straight = haversine(pts[i], pts[j]);
+      if (arc < EXCURSION_RATIO * straight) continue; // not there-and-back shaped (e.g. a broad loop)
+
+      if (!retraces(pts, i, j, bandM)) continue; // hairpin / figure-eight: limbs don't overlap → keep
+
+      const removeCount = j - i - 1;
+      if (removeCount > MAX_COLLAPSE_FRAC * pts.length) continue; // too big a bite — refuse to amputate
+      if (pts.length - removeCount < 4) continue; // never drop below the 4-point floor
+
+      pts = [...pts.slice(0, i + 1), ...pts.slice(j)];
+      cum = cumulativeKm(pts);
+      j = i; // the rejoin vertex is now at index i; continue scanning earlier excursions
+      collapsed = true;
+      break;
+    }
+    if (!collapsed) j--;
+  }
+  return pts;
+}
+
+/**
+ * Whether the outbound half of arc `i→j` retraces the return half: each sampled midpoint of the
+ * outbound limb has a near neighbour (within `bandM`) on the return limb. This is the Fréchet-style
+ * band {@link cleanCoords} uses (its 30 m retrace test), generalized to a rejoin pair. A hairpin
+ * with offset limbs and a figure-eight whose lobes cross both FAIL this, so they are preserved.
+ */
+function retraces(pts: LatLng[], i: number, j: number, bandM: number): boolean {
+  const mid = Math.floor((i + j) / 2);
+  // Outbound limb = (i, mid), return limb = (mid, j); the apex `mid` is shared and excluded from
+  // both so a U-turn vertex can't trivially "match itself".
+  let checked = 0;
+  for (let a = i + 1; a < mid; a++) {
+    let near = false;
+    for (let b = mid + 1; b < j; b++) {
+      if (metersBetween(pts[a], pts[b]) <= bandM) { near = true; break; }
+    }
+    if (!near) return false;
+    checked++;
+  }
+  return checked > 0;
 }
 
 /**
