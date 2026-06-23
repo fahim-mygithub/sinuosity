@@ -4,13 +4,19 @@ import { useLeafletMap } from './hooks/useLeafletMap';
 import { useBottomSheet } from './hooks/useBottomSheet';
 import { scanArea, OverpassError, type AreaScan } from './lib/overpass';
 import { buildRides } from './lib/routeBuilder';
-import { BIAS_PRESETS, COMPOSITE_WEIGHTS, normalizeWeights, type BiasWeights, type BiasPreset } from './lib/composite';
+import { BIAS_PRESETS, normalizeWeights, type BiasWeights, type BiasPreset } from './lib/composite';
 import { CURATED_ROUTES } from './data/curatedRoutes';
 import { SCENIC_ROUTES } from './data/scenicRoutes';
 import { loadDefaultLocation, saveDefaultLocation, type SavedLocation } from './lib/settings';
+import { loadPreferences, updatePreferences, applyTheme, type Preferences } from './lib/preferences';
+import {
+  loadSavedRoutes, writeSavedRoutes, toggleSavedRoute, removeSavedRoute, isRouteSaved, type SavedRoute,
+} from './lib/savedRoutes';
+import { formatDistance } from './lib/units';
 import { reverseGeocode } from './lib/geocode';
 import { LocationSearch } from './components/LocationSearch';
 import { ScenicRouteReview } from './components/ScenicRouteReview';
+import { SettingsMenu } from './components/SettingsMenu';
 import { KIND_ICON } from './lib/scenicMeta';
 import type { ScenicRoute, ScenicStop } from './data/types';
 import type { LatLng } from './lib/geometry';
@@ -25,6 +31,9 @@ const BIAS_ROWS: { key: keyof BiasWeights; label: string; icon: string }[] = [
 ];
 
 type Tab = 'scenic' | 'curated' | 'scanner';
+
+/** Resolve a saved bias-preset id back to its preset (falls back to the first/Balanced). */
+const presetById = (id: string) => BIAS_PRESETS.find((p) => p.id === id) ?? BIAS_PRESETS[0];
 
 const SCENIC_SORTED = [...SCENIC_ROUTES].sort((a, b) => b.score - a.score);
 const CURATED_SORTED = [...CURATED_ROUTES].sort((a, b) => b.score - a.score);
@@ -44,6 +53,12 @@ export default function App() {
   const chromeRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState('Pick a scenic ride — preview the stops, then send it to Maps');
 
+  // Rider preferences (units / default bias / theme), saved rides, and the settings overlay — all local.
+  const [prefs, setPrefs] = useState<Preferences>(loadPreferences);
+  const [saved, setSaved] = useState<SavedRoute[]>(loadSavedRoutes);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const units = prefs.units;
+
   // Location: the rider's saved default (navigation origin + scan home) and the live scan center.
   const [defaultLocation, setDefaultLocation] = useState<SavedLocation>(loadDefaultLocation);
   const [scanCenter, setScanCenter] = useState<SavedLocation>(() => defaultLocation);
@@ -56,8 +71,8 @@ export default function App() {
   // Multi-criteria scan: the cached area corpus + the rides built from it under the current bias.
   const [areaScan, setAreaScan] = useState<AreaScan | null>(null);
   const [scanRides, setScanRides] = useState<ScenicRoute[]>([]);
-  const [bias, setBias] = useState<BiasWeights>(COMPOSITE_WEIGHTS);
-  const [presetId, setPresetId] = useState('balanced');
+  const [bias, setBias] = useState<BiasWeights>(() => presetById(prefs.defaultBiasPreset).weights);
+  const [presetId, setPresetId] = useState(() => prefs.defaultBiasPreset);
   const [showWeights, setShowWeights] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
@@ -70,6 +85,16 @@ export default function App() {
   const onCircleDropRef = useRef<(ll: L.LatLng) => void>(() => {});
 
   const showToast = useCallback((m: string) => setToast(m), []);
+
+  // Apply the chosen theme to the document root so the light-mode CSS overrides engage.
+  useEffect(() => { applyTheme(prefs.theme); }, [prefs.theme]);
+
+  // Persist a preferences change and reflect it in state immediately.
+  const changePrefs = useCallback((patch: Partial<Preferences>) => {
+    setPrefs(updatePreferences(patch));
+  }, []);
+
+  const savedIds = useMemo(() => new Set(saved.map((s) => s.route.id)), [saved]);
 
   // Draw (or replace) the scan-radius ring at `center`, keeping a handle so the radius slider
   // can grow/shrink it live without a re-scan. Call AFTER clearLayers() so it isn't wiped. A visible
@@ -288,6 +313,35 @@ export default function App() {
 
   const handleUseDefault = useCallback(() => recenterScan(defaultLocation), [recenterScan, defaultLocation]);
 
+  // Settings → Home: persist a new default location (the Scan home + navigation origin).
+  const handleChangeHome = useCallback((loc: SavedLocation) => {
+    if (saveDefaultLocation(loc)) {
+      setDefaultLocation(loc);
+      showToast(`Home set to ${loc.label}`);
+    } else {
+      showToast('Could not save home — storage is unavailable');
+    }
+  }, [showToast]);
+
+  // Save / unsave the current ride. The full route is persisted so it reopens through the same path.
+  const toggleSaveRoute = useCallback((route: ScenicRoute) => {
+    const wasSaved = isRouteSaved(saved, route.id);
+    const next = toggleSavedRoute(saved, route, Date.now());
+    setSaved(next);
+    writeSavedRoutes(next);
+    showToast(wasSaved ? `Removed “${route.name}” from saved` : `Saved “${route.name}”`);
+  }, [saved, showToast]);
+
+  const removeSaved = useCallback((id: string) => {
+    setSaved((prev) => { const next = removeSavedRoute(prev, id); writeSavedRoutes(next); return next; });
+  }, []);
+
+  // Open a saved ride from the settings overlay: close settings, then show its full review.
+  const openSavedRoute = useCallback((route: ScenicRoute) => {
+    setSettingsOpen(false);
+    selectScenic(route);
+  }, [selectScenic]);
+
   const runScan = async () => {
     if (!map || scanning) return;
     const controller = new AbortController();
@@ -370,7 +424,7 @@ export default function App() {
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950 text-slate-100">
-      <div ref={chromeRef} style={{ display: 'contents' }}>
+      <div ref={chromeRef} className="app-chrome" style={{ display: 'contents' }}>
       <div id="map" className="absolute inset-0 z-0" />
 
       {/* Header */}
@@ -382,10 +436,26 @@ export default function App() {
             </h1>
             <p className="text-[10px] text-slate-400 mt-0.5 truncate">Twisty + scenic backroads · scout from anywhere</p>
           </div>
-          <div role="tablist" aria-label="Ride finder mode" className="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800 shrink-0">
-            <button role="tab" aria-selected={tab === 'scenic'} onClick={() => switchTab('scenic')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'scenic' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scenic</button>
-            <button role="tab" aria-selected={tab === 'curated'} onClick={() => switchTab('curated')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'curated' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Curated</button>
-            <button role="tab" aria-selected={tab === 'scanner'} onClick={() => switchTab('scanner')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'scanner' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scan</button>
+          <div className="flex items-center gap-2 shrink-0">
+            <div role="tablist" aria-label="Ride finder mode" className="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+              <button role="tab" aria-selected={tab === 'scenic'} onClick={() => switchTab('scenic')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'scenic' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scenic</button>
+              <button role="tab" aria-selected={tab === 'curated'} onClick={() => switchTab('curated')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'curated' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Curated</button>
+              <button role="tab" aria-selected={tab === 'scanner'} onClick={() => switchTab('scanner')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'scanner' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scan</button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Settings"
+              title="Settings"
+              className="relative h-9 w-9 grid place-items-center rounded-xl bg-slate-950/60 border border-slate-800 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/40 transition-colors"
+            >
+              <span className="text-base" aria-hidden>⚙️</span>
+              {saved.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 grid place-items-center rounded-full bg-emerald-500 text-slate-950 text-[9px] font-black" aria-hidden>
+                  {saved.length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -484,7 +554,7 @@ export default function App() {
                     >
                       <div className="min-w-0 pr-2">
                         <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {r.region} · {r.distanceKm} km</p>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {r.region} · {formatDistance(r.distanceKm, units)}</p>
                       </div>
                       <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{r.score}</span>
                     </button>
@@ -574,7 +644,7 @@ export default function App() {
                           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} aria-hidden />
                           <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
                         </div>
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {r.distanceKm} km · 🌀{r.rubric.curvature.toFixed(1)} 💧{r.rubric.water.toFixed(1)} 🌲{r.rubric.greenery.toFixed(1)} 📍{r.rubric.notability.toFixed(1)}</p>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {formatDistance(r.distanceKm, units)} · 🌀{r.rubric.curvature.toFixed(1)} 💧{r.rubric.water.toFixed(1)} 🌲{r.rubric.greenery.toFixed(1)} 📍{r.rubric.notability.toFixed(1)}</p>
                       </div>
                       <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{r.score}</span>
                     </button>
@@ -585,11 +655,33 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Settings overlay — themed with the chrome (inside .app-chrome), above the panel/header */}
+      {settingsOpen && (
+        <SettingsMenu
+          prefs={prefs}
+          onChangePrefs={changePrefs}
+          home={defaultLocation}
+          onChangeHome={handleChangeHome}
+          saved={saved}
+          onOpenSaved={openSavedRoute}
+          onRemoveSaved={removeSaved}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       </div>
 
       {/* Full-page review overlay — shared by scenic, curated AND scan-built rides */}
       {reviewOpen && scenicDetail && (
-        <ScenicRouteReview route={scenicDetail} onBack={closeReview} onLocate={locateStop} origin={tab === 'scanner' ? scanCenterLatLng : homeCenter} />
+        <ScenicRouteReview
+          route={scenicDetail}
+          onBack={closeReview}
+          onLocate={locateStop}
+          origin={tab === 'scanner' ? scanCenterLatLng : homeCenter}
+          units={units}
+          isSaved={savedIds.has(scenicDetail.id)}
+          onToggleSave={() => toggleSaveRoute(scenicDetail)}
+        />
       )}
     </div>
   );

@@ -38,3 +38,64 @@ input[type='range']::-moz-range-thumb { height: 26px; width: 26px; border-radius
   .animate-spin { animation: none; }
   .sheet { transition: none; }
 }
+
+/* ============================================================================
+   LIGHT THEME
+   The app is built dark-first with literal Tailwind slate utilities. Rather than
+   rewrite every className, light mode remaps the chrome's slate surfaces to a
+   light palette. Scoped to `.app-chrome` so the imagery-driven full-page review
+   (a sibling, outside the wrapper) and the Leaflet map keep their dark treatment.
+   Emerald/amber accents are darkened only where they're TEXT, for contrast on white.
+   ============================================================================ */
+html[data-theme='light'] #map { background: #e2e8f0; }
+
+html[data-theme='light'] .app-chrome {
+  /* Surfaces (dark → light) */
+  --c-page: #f1f5f9;
+  --c-card: #ffffff;
+  --c-recess: #eef2f7;
+}
+
+/* Backgrounds */
+html[data-theme='light'] .app-chrome .bg-slate-950 { background-color: #f1f5f9; }
+html[data-theme='light'] .app-chrome .bg-slate-950\/40 { background-color: rgba(255, 255, 255, 0.6); }
+html[data-theme='light'] .app-chrome .bg-slate-950\/50 { background-color: #eef2f7; }
+html[data-theme='light'] .app-chrome .bg-slate-950\/60 { background-color: #e7edf4; }
+html[data-theme='light'] .app-chrome .bg-slate-950\/70 { background-color: rgba(15, 23, 42, 0.45); } /* modal scrim stays dim */
+html[data-theme='light'] .app-chrome .bg-slate-950\/80 { background-color: rgba(241, 245, 249, 0.88); }
+html[data-theme='light'] .app-chrome .bg-slate-900 { background-color: #ffffff; }
+html[data-theme='light'] .app-chrome .bg-slate-900\/95 { background-color: rgba(255, 255, 255, 0.95); }
+html[data-theme='light'] .app-chrome .bg-slate-900\/97 { background-color: rgba(255, 255, 255, 0.97); }
+html[data-theme='light'] .app-chrome .bg-slate-900\/60 { background-color: #f1f5f9; }
+html[data-theme='light'] .app-chrome .bg-slate-900\/40 { background-color: #f8fafc; }
+html[data-theme='light'] .app-chrome .bg-slate-800 { background-color: #e2e8f0; }
+html[data-theme='light'] .app-chrome .bg-slate-700 { background-color: #cbd5e1; }
+html[data-theme='light'] .app-chrome .bg-slate-600 { background-color: #94a3b8; }
+html[data-theme='light'] .app-chrome .bg-slate-500 { background-color: #64748b; }
+html[data-theme='light'] .app-chrome .bg-white\/5 { background-color: rgba(15, 23, 42, 0.05); }
+
+/* Text */
+html[data-theme='light'] .app-chrome .text-white { color: #0f172a; }
+html[data-theme='light'] .app-chrome .text-slate-100 { color: #0f172a; }
+html[data-theme='light'] .app-chrome .text-slate-200 { color: #1e293b; }
+html[data-theme='light'] .app-chrome .text-slate-300 { color: #334155; }
+html[data-theme='light'] .app-chrome .text-slate-300\/80 { color: rgba(51, 65, 85, 0.85); }
+html[data-theme='light'] .app-chrome .text-slate-400 { color: #475569; }
+html[data-theme='light'] .app-chrome .text-slate-500 { color: #64748b; }
+html[data-theme='light'] .app-chrome .text-emerald-400 { color: #047857; }
+html[data-theme='light'] .app-chrome .text-emerald-300 { color: #047857; }
+html[data-theme='light'] .app-chrome .text-amber-400\/90 { color: rgba(180, 83, 9, 0.95); }
+
+/* Borders */
+html[data-theme='light'] .app-chrome .border-slate-800,
+html[data-theme='light'] .app-chrome .border-slate-800\/70,
+html[data-theme='light'] .app-chrome .border-slate-800\/60 { border-color: #e2e8f0; }
+html[data-theme='light'] .app-chrome .border-slate-700 { border-color: #cbd5e1; }
+html[data-theme='light'] .app-chrome .border-white\/5 { border-color: rgba(15, 23, 42, 0.08); }
+
+/* Rings */
+html[data-theme='light'] .app-chrome .ring-slate-700 { --tw-ring-color: #cbd5e1; }
+
+/* Range slider track reads as a light groove in light mode (emerald thumb unchanged). */
+html[data-theme='light'] .app-chrome input[type='range']::-webkit-slider-runnable-track { background: #cbd5e1; }
+html[data-theme='light'] .app-chrome input[type='range']::-moz-range-track { background: #cbd5e1; }

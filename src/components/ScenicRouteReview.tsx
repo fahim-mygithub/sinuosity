@@ -7,6 +7,8 @@ import {
   streetViewDeepLink,
 } from '../lib/scenicImagery';
 import { KIND_ICON, RUBRIC_LABELS } from '../lib/scenicMeta';
+import { distanceValue } from '../lib/units';
+import type { Units } from '../lib/preferences';
 import type { LatLng } from '../lib/geometry';
 import type { ScenicRoute, ScenicStop, ScenicRubric } from '../data/types';
 
@@ -25,12 +27,21 @@ export function ScenicRouteReview({
   onBack,
   onLocate,
   origin,
+  units,
+  isSaved,
+  onToggleSave,
 }: {
   route: ScenicRoute;
   onBack: () => void;
   onLocate: (index: number, lat: number, lon: number) => void;
   /** Navigation start point ("Ride it" origin); falls back to HOME when omitted. */
   origin?: LatLng;
+  /** Distance display unit. */
+  units: Units;
+  /** Whether this ride is in the rider's saved list. */
+  isSaved: boolean;
+  /** Toggle this ride's saved state. */
+  onToggleSave: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const heroRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +107,16 @@ export function ScenicRouteReview({
         >
           {route.name}
         </span>
+        {/* Save / unsave */}
+        <button
+          onClick={onToggleSave}
+          aria-pressed={isSaved}
+          aria-label={isSaved ? 'Remove this ride from saved' : 'Save this ride'}
+          title={isSaved ? 'Saved — tap to remove' : 'Save this ride'}
+          className={`shrink-0 h-10 w-10 grid place-items-center rounded-xl ring-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${isSaved ? 'bg-emerald-500/15 ring-emerald-500/40 text-emerald-400' : 'bg-slate-800 ring-slate-700 text-slate-300 hover:text-emerald-400'}`}
+        >
+          <span className="text-lg leading-none" aria-hidden>{isSaved ? '♥' : '♡'}</span>
+        </button>
         {/* Desktop CTAs */}
         <div className="hidden md:flex items-center gap-2 shrink-0">
           <a href={gmaps} target="_blank" rel="noopener noreferrer" className="h-10 px-3.5 inline-flex items-center rounded-xl bg-emerald-500 text-slate-950 text-[13px] font-bold hover:bg-emerald-400 active:scale-[.98] transition-all">Ride it · Google Maps</a>
@@ -155,8 +176,8 @@ export function ScenicRouteReview({
         {/* Stat strip */}
         <dl className="grid grid-cols-3 divide-x divide-white/10 py-6 text-center">
           <div className="px-2">
-            <dd className="font-mono text-2xl md:text-3xl font-black text-slate-100">{route.distanceKm}</dd>
-            <dt className="text-[10px] uppercase tracking-wider text-slate-400 mt-0.5">km</dt>
+            <dd className="font-mono text-2xl md:text-3xl font-black text-slate-100">{distanceValue(route.distanceKm, units)}</dd>
+            <dt className="text-[10px] uppercase tracking-wider text-slate-400 mt-0.5">{units}</dt>
           </div>
           <div className="px-2">
             <dd className="font-mono text-2xl md:text-3xl font-black text-slate-100">{route.drivingTime}</dd>
