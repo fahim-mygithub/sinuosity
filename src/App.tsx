@@ -68,6 +68,8 @@ export default function App() {
     Math.abs(scanCenter.lat - defaultLocation.lat) < 1e-4 && Math.abs(scanCenter.lon - defaultLocation.lon) < 1e-4;
 
   const [scanRadius, setScanRadius] = useState(12);
+  // When on, the builder prefers round-trip loops (returns near the start) over there-and-backs.
+  const [loopMode, setLoopMode] = useState(false);
   // Multi-criteria scan: the cached area corpus + the rides built from it under the current bias.
   const [areaScan, setAreaScan] = useState<AreaScan | null>(null);
   const [scanRides, setScanRides] = useState<ScenicRoute[]>([]);
@@ -251,8 +253,8 @@ export default function App() {
 
   // Re-rank + redraw from the cached area corpus under a bias — no network. Used both right after a
   // scan and whenever the rider nudges a bias slider, so weighting changes feel instant.
-  const rebuildRides = useCallback((scan: AreaScan, b: BiasWeights): ScenicRoute[] => {
-    const rides = buildRides(scan.roads, scan.catalog, { bias: b, areaLabel: scanCenter.label });
+  const rebuildRides = useCallback((scan: AreaScan, b: BiasWeights, loops: boolean): ScenicRoute[] => {
+    const rides = buildRides(scan.roads, scan.catalog, { bias: b, areaLabel: scanCenter.label, preferLoops: loops });
     setScanRides(rides);
     if (map) {
       clearLayers();
@@ -356,7 +358,7 @@ export default function App() {
     try {
       const scan = await scanArea(scanCenterLatLng, scanRadius, controller.signal);
       setAreaScan(scan);
-      const rides = rebuildRides(scan, bias);
+      const rides = rebuildRides(scan, bias, loopMode);
       if (rides.length) {
         const b = L.latLngBounds(rides.flatMap((r) => r.coords.map((c) => L.latLng(c[0], c[1]))));
         if (b.isValid()) map.fitBounds(b, fitOptions());
@@ -392,9 +394,9 @@ export default function App() {
   const firstBias = useRef(true);
   useEffect(() => {
     if (firstBias.current) { firstBias.current = false; return; }
-    if (tab === 'scanner' && areaScan) rebuildRides(areaScan, bias);
-    // eslint-disable-next-line react-hooks/exhaustive-deps — intentionally keyed on bias only
-  }, [bias]);
+    if (tab === 'scanner' && areaScan) rebuildRides(areaScan, bias, loopMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps — intentionally keyed on bias + loopMode
+  }, [bias, loopMode]);
 
   const applyPreset = (p: BiasPreset) => { setPresetId(p.id); setBias(p.weights); };
   const setWeight = (k: keyof BiasWeights, v: number) => {
@@ -584,6 +586,23 @@ export default function App() {
                 <div className="text-right font-mono text-emerald-400 font-bold text-sm">{scanRadius} km</div>
                 <p className="text-[10px] text-slate-500 mt-1">Tip: drag the green center pin on the map to move the scan area.</p>
               </div>
+
+              {/* Loop toggle — prefer round trips that return near the start. Re-ranks instantly. */}
+              <button
+                type="button"
+                onClick={() => setLoopMode((m) => !m)}
+                aria-pressed={loopMode}
+                className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${loopMode ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-slate-950/50 border-slate-800 hover:border-emerald-500/30'}`}
+              >
+                <span className="text-lg shrink-0" aria-hidden>🔄</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12px] font-bold text-slate-100">Loop rides</span>
+                  <span className="block text-[10px] text-slate-400 leading-snug">Round trips that come back near where you start. No loop fits? You’ll get the best there-and-back instead.</span>
+                </span>
+                <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${loopMode ? 'bg-emerald-500' : 'bg-slate-700'}`} aria-hidden>
+                  <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${loopMode ? 'translate-x-4' : ''}`} />
+                </span>
+              </button>
 
               {/* Bias: one-tap presets + an expandable manual mixer. Changing either re-ranks the
                   already-scanned corpus instantly — no re-query. */}

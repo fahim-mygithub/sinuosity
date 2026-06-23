@@ -25,6 +25,12 @@ export interface BuildOptions {
   maxRides?: number;
   /** Shown as the ride's region line, e.g. the scan-center label. */
   areaLabel?: string;
+  /**
+   * Prefer round-trip LOOPS. Growth pulls homeward harder and earlier so chains close through the
+   * graph, and the output is filtered to loop-shaped rides. If the area can't form a real loop, we
+   * fall back to the best rides (honestly labeled out-and-back) so the list is never empty.
+   */
+  preferLoops?: boolean;
 }
 
 const round4 = (n: number) => n.toFixed(4);
@@ -34,6 +40,10 @@ const reversed = (c: LatLng[]) => [...c].reverse();
 const RETURN_BIAS = 0.6; // homeward pull strength, capped so it can never starve a ride below minKm
 const RETURN_EPS = 0.05; // km — a biased pick must reduce dist-to-start by at least this to be taken
 const TAIL_CAP = 18; // max roads in a chain (raised from 14 to offset dropped head-growth)
+const DEFAULT_ONSET = 0.5; // homeward pull begins at this fraction of targetKm (the second half)
+const LOOP_RETURN_BIAS = 1.6; // stronger homeward pull when the rider asks for loops
+const LOOP_ONSET = 0.3; // …and it begins earlier, so chains have room to curve back and close
+const LOOP_CLOSE_FRAC = 0.4; // once the chain is ≥ this fraction of targetKm, snap shut at the start
 
 /** Shape of a stitched ride. A `loop` returns near its start through the graph; everything else is
  *  an honest `out-and-back` (you retrace to come home). */
@@ -57,6 +67,9 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
   const maxRides = opts.maxRides ?? 8;
   const bias = opts.bias;
   const closeKm = loopCloseKm(targetKm);
+  const preferLoops = !!opts.preferLoops;
+  const returnBias = preferLoops ? LOOP_RETURN_BIAS : RETURN_BIAS;
+  const onset = preferLoops ? LOOP_ONSET : DEFAULT_ONSET;
 
   // Composite under the current bias decides both seed order and which neighbour to chain next.
   const comp = roads.map((r) => compositeScore(r.rubric, bias));
@@ -80,11 +93,18 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
   // minKm/length gate passes, so a discarded chain frees its roads for later seeds.
   const used = new Set<number>();
 
-  const built: { route: ScenicRoute; rank: number }[] = [];
+  const built: { route: ScenicRoute; rank: number; shape: RideShape }[] = [];
   let palette = 0;
 
+  // In loop mode we keep exploring until we have maxRides LOOPS (capped at maxRides*5 total attempts
+  // so a loop-free area can't run away); otherwise we stop at maxRides built rides as before.
+  const enoughBuilt = () =>
+    preferLoops
+      ? built.filter((b) => b.shape === 'loop').length >= maxRides || built.length >= maxRides * 5
+      : built.length >= maxRides;
+
   for (const seed of order) {
-    if (built.length >= maxRides) break;
+    if (enoughBuilt()) break;
     if (used.has(seed)) continue;
 
     const seedRoad = roads[seed];
@@ -112,7 +132,7 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
     let tailKey = key(seedRoad.coords[seedRoad.coords.length - 1]);
     while (chainKm() < targetKm && chain.length < TAIL_CAP) {
       const km = chainKm();
-      const progress = Math.max(0, Math.min(1, (km - targetKm * 0.5) / (targetKm * 0.5)));
+      const progress = Math.max(0, Math.min(1, (km - targetKm * onset) / (targetKm * (1 - onset))));
 
       const candidates: number[] = [];
       for (const i of endpoints.get(tailKey) ?? []) {
@@ -121,19 +141,37 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
       }
       if (!candidates.length) break;
 
+      // Loop closure (preferLoops only): once we're substantially out, snap the chain shut the
+      // moment a candidate road returns to the START node — a real graph cycle to the anchor. The
+      // homeward bias only steers us close; THIS is what actually produces start-returning loops,
+      // and it closes even when the closing road scores lower than a spur tempting the walk onward.
+      if (preferLoops && chainKm() >= targetKm * LOOP_CLOSE_FRAC) {
+        const startK = key(start);
+        const closer = candidates.find((i) => key(farEndpoint(i, tailKey)) === startK);
+        if (closer !== undefined) {
+          claimed.add(closer);
+          let nc = roads[closer].coords;
+          if (key(nc[0]) !== tailKey) nc = reversed(nc);
+          chain.push(nc);
+          chainRoads.push(roads[closer]);
+          tailKey = key(nc[nc.length - 1]);
+          break; // closed at the anchor — a loop
+        }
+      }
+
       // Un-biased best (the fallback that guarantees we never grow LESS than before).
       let best = candidates[0];
       for (const i of candidates) if (comp[i] > comp[best]) best = i;
 
       let pick = best;
-      if (progress > 0 && RETURN_BIAS > 0) {
+      if (progress > 0 && returnBias > 0) {
         const tailPt = lastPoint(chain);
         const curTailDist = distToStart(tailPt);
         let bestBiased: number | null = null;
         let bestBiasedScore = -Infinity;
         for (const i of candidates) {
           const fe = farEndpoint(i, tailKey);
-          const s = comp[i] - RETURN_BIAS * progress * distToStart(fe);
+          const s = comp[i] - returnBias * progress * distToStart(fe);
           if (s > bestBiasedScore) { bestBiasedScore = s; bestBiased = i; }
         }
         if (bestBiased !== null) {
@@ -153,7 +191,11 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
 
     // C2 wire order: clean (flat) → dropBacktracks(start, shape) → downsample(150) → recompute km.
     const cleaned = cleanCoords(chain.flat());
-    const shape = classifyShape(cleaned, chain, chainRoads, start, closeKm);
+    // Loop mode uses a more generous return tolerance and accepts a near-start return as a loop
+    // (the chain is built from DISTINCT roads, so returning near the start IS a real circuit — see
+    // classifyShape). Default mode keeps the strict graph-cycle definition byte-for-byte.
+    const loopTol = preferLoops ? Math.min(4, Math.max(2, targetKm * 0.15)) : closeKm;
+    const shape = classifyShape(cleaned, chain, chainRoads, start, loopTol, preferLoops);
     // bandM < the smallest legitimate limb offset: a 40–60 m hairpin's parallel limbs fall OUTSIDE
     // the 25 m band → not read as a retrace → preserved (spec C1 hairpin invariant), while a true
     // draw-over-itself backtrack (near-coincident limbs, <25 m) still collapses. This decouples
@@ -171,12 +213,19 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
       coords, km, seedRoad, chain, chainRoads, shape,
       catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel,
     );
-    built.push({ route, rank: rideRank(route, chainRoads) });
+    built.push({ route, rank: rideRank(route, chainRoads), shape });
     palette++;
   }
 
   // Sort by internal rank (score × rideability); .score itself is untouched/pure (B6).
   built.sort((a, b) => b.rank - a.rank);
+
+  // Loop mode: surface only the round-trip loops. If the area formed none, fall back to the
+  // best-ranked rides (honestly labeled out-and-back) so the rider is never left empty-handed.
+  if (preferLoops) {
+    const loops = built.filter((b) => b.shape === 'loop');
+    return (loops.length ? loops : built).slice(0, maxRides).map((b) => b.route);
+  }
   return built.map((b) => b.route);
 }
 
@@ -187,36 +236,34 @@ function lastPoint(chain: LatLng[][]): LatLng {
 }
 
 /**
- * Honest shape classification (B4/M10). A ride is a `loop` ONLY when the walk closes through the
- * graph — its tail endpoint coincides (by junction key) with a node already on the chain or the
- * start node, a REAL cycle — AND the start/end are euclidean-close (`≤ loopCloseKm`). Euclidean
- * proximity is necessary, not sufficient. A closure that would require driving a `oneway` road the
- * wrong way is refused. Everything else is an honest `out-and-back`.
+ * Honest shape classification (B4/M10).
+ *
+ * Both modes first require the start/end to be euclidean-close (`≤ tol`) and refuse a closure that
+ * would drive a `oneway` road the wrong way.
+ *
+ * - **Strict (default, `relaxed=false`):** additionally requires the walk to close through the
+ *   GRAPH — its tail junction key must coincide with a node already on the chain (start or a seam),
+ *   a REAL cycle. Euclidean proximity is necessary, not sufficient. Unchanged from the hardening.
+ * - **Relaxed (`relaxed=true`, loop mode):** a near-start return is enough. This is honest BECAUSE
+ *   the builder never reuses a road (each is claimed once) — so a chain of DISTINCT roads that ends
+ *   near where it began is a genuine circuit you can ride round, even if its final node isn't the
+ *   exact start junction. The strict graph-cycle test was too tight to ever surface real loops.
+ *
+ * Everything else is an honest `out-and-back`.
  */
 function classifyShape(
   coords: LatLng[],
   chain: LatLng[][],
   chainRoads: ScoredRoad[],
   start: LatLng,
-  closeKm: number,
+  tol: number,
+  relaxed = false,
 ): RideShape {
   if (coords.length < 2) return 'out-and-back';
   const end = coords[coords.length - 1];
-  if (haversine(start, end) > closeKm) return 'out-and-back';
+  if (haversine(start, end) > tol) return 'out-and-back';
 
-  // Graph closure: the tail's junction key must match a junction already visited on the chain
-  // (the start node or any internal seam). Collect every junction key the chain passes through.
-  const tailKey = key(lastPoint(chain));
-  const visited = new Set<string>();
-  // start of the chain
-  visited.add(key(chain[0][0]));
-  // each seam between consecutive legs is a shared junction; also the head of each leg
-  for (let k = 0; k < chain.length - 1; k++) {
-    visited.add(key(chain[k][chain[k].length - 1]));
-  }
-  if (!visited.has(tailKey)) return 'out-and-back';
-
-  // Wrong-way guard: refuse a closure whose final leg is a oneway traversed backwards.
+  // Wrong-way guard (both modes): refuse a return whose final leg is a oneway traversed backwards.
   const lastRoad = chainRoads[chainRoads.length - 1];
   if (lastRoad && isOneway(lastRoad.oneway)) {
     const lastLeg = chain[chain.length - 1];
@@ -226,6 +273,19 @@ function classifyShape(
     const orientedReversed = key(lastLeg[0]) === key(original[original.length - 1]);
     if (orientedReversed) return 'out-and-back';
   }
+
+  // Relaxed loop mode: distinct-road chain returning near the start is a real circuit.
+  if (relaxed) return 'loop';
+
+  // Strict graph closure: the tail's junction key must match a junction already visited on the
+  // chain (the start node or any internal seam). Collect every junction key the chain passes through.
+  const tailKey = key(lastPoint(chain));
+  const visited = new Set<string>();
+  visited.add(key(chain[0][0]));
+  for (let k = 0; k < chain.length - 1; k++) {
+    visited.add(key(chain[k][chain[k].length - 1]));
+  }
+  if (!visited.has(tailKey)) return 'out-and-back';
 
   return 'loop';
 }

@@ -317,6 +317,115 @@ describe('buildRides — honest shape (B4/M10)', () => {
   });
 });
 
+describe('buildRides — loop mode (preferLoops)', () => {
+  // Build a straight segment of `n` points between two endpoints.
+  const seg = (id: string, p0: LatLng, p1: LatLng): ScoredRoad => {
+    const n = 10;
+    const coords: LatLng[] = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      coords.push([+(p0[0] + (p1[0] - p0[0]) * t).toFixed(5), +(p0[1] + (p1[1] - p0[1]) * t).toFixed(5)]);
+    }
+    return { id, name: id, curveDensity: 1.2, sinuosity: 5, score: 0, rubric: rubric(), coords };
+  };
+  // A closed triangle A→B→C→A that forms a real graph cycle.
+  const triangle = (): ScoredRoad[] => {
+    const A: LatLng = [42.70, -78.80];
+    const B: LatLng = [42.74, -78.80];
+    const C: LatLng = [42.72, -78.74];
+    const ab = seg('AB Rd', A, B);
+    const bc = seg('BC Rd', B, C);
+    const ca = seg('CA Rd', C, A);
+    bc.coords[0] = ab.coords[ab.coords.length - 1];
+    ca.coords[0] = bc.coords[bc.coords.length - 1];
+    ca.coords[ca.coords.length - 1] = ab.coords[0];
+    return [ab, bc, ca];
+  };
+
+  it('returns ONLY loop-shaped rides when a loop exists (the out-and-back is filtered out)', () => {
+    // A closing triangle (a real loop) PLUS a disjoint straight pair far away (an out-and-back).
+    const tri = triangle();
+    const sx = road('Straight X', -77.10, -77.06, rubric());
+    const sy = road('Straight Y', -77.06, -77.02, rubric());
+    sy.coords[0] = sx.coords[sx.coords.length - 1];
+    const rides = buildRides([...tri, sx, sy], EMPTY_CATALOG, {
+      bias: COMPOSITE_WEIGHTS, minKm: 1, targetKm: 20, preferLoops: true,
+    });
+    expect(rides.length).toBeGreaterThanOrEqual(1);
+    for (const r of rides) {
+      expect(r.summary).toContain('Loops back');
+      expect(r.summary).not.toContain('Out-and-back');
+    }
+  });
+
+  it('falls back to the best ride (never empty) when no loop can be formed', () => {
+    // Only a straight stitchable pair is available — no graph cycle is possible.
+    const a = road('Solo A', -78.84, -78.80, rubric());
+    const b = road('Solo B', -78.80, -78.76, rubric());
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const rides = buildRides([a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1, preferLoops: true });
+    expect(rides.length).toBeGreaterThanOrEqual(1); // honest fallback, not an empty list
+    expect(rides[0].summary).toContain('Out-and-back'); // labeled truthfully
+  });
+
+  it('actively CLOSES a loop back to the start even when a higher-scoring spur tempts the walk away', () => {
+    // A square A→B→C→D→A (curvy enough to ride) plus a HIGH-curvature spur D→E leading away east.
+    // At D the greedy/biased walk prefers the spur (higher composite), so DEFAULT mode overshoots
+    // into an out-and-back. Loop mode must instead snap the square shut at the start node.
+    const A: LatLng = [42.70, -78.80], B: LatLng = [42.74, -78.80];
+    const C: LatLng = [42.74, -78.74], D: LatLng = [42.70, -78.74], E: LatLng = [42.70, -78.66];
+    const ab = seg('AB Rd', A, B); ab.rubric = rubric({ curvature: 10 }); // seeds first
+    const bc = seg('BC Rd', B, C);
+    const cd = seg('CD Rd', C, D);
+    const da = seg('DA Rd', D, A); // closes the square back to the start node
+    const de = seg('DE Rd', D, E); de.rubric = rubric({ curvature: 9 }); // the tempting spur
+    bc.coords[0] = ab.coords[ab.coords.length - 1];
+    cd.coords[0] = bc.coords[bc.coords.length - 1];
+    da.coords[0] = cd.coords[cd.coords.length - 1];
+    da.coords[da.coords.length - 1] = ab.coords[0]; // exact closure to A
+    de.coords[0] = cd.coords[cd.coords.length - 1]; // shares the D junction with DA
+    const roads = [ab, bc, cd, da, de];
+
+    const opts = { bias: COMPOSITE_WEIGHTS, minKm: 1, targetKm: 20 };
+    const dflt = buildRides(roads, EMPTY_CATALOG, opts);
+    const loops = buildRides(roads, EMPTY_CATALOG, { ...opts, preferLoops: true });
+
+    // Default overshoots down the spur — the square never closes.
+    expect(dflt.every((r) => !r.summary.includes('Loops back'))).toBe(true);
+    // Loop mode returns the closed square.
+    expect(loops.length).toBeGreaterThanOrEqual(1);
+    expect(loops.every((r) => r.summary.includes('Loops back'))).toBe(true);
+  });
+
+  it('treats a distinct-road circuit that returns NEAR (not exactly on) the start as a loop — only in loop mode', () => {
+    // A→B→C→D→E of distinct roads; E sits ~0.5 km from A but is a DIFFERENT node (no road E→A).
+    // There is no exact graph cycle, so DEFAULT mode (strict) calls it out-and-back. But because the
+    // builder never reuses a road, returning near the start IS a real circuit — loop mode says loop.
+    const A: LatLng = [42.70, -78.80], B: LatLng = [42.73, -78.80], C: LatLng = [42.73, -78.84];
+    const D: LatLng = [42.70, -78.84], E: LatLng = [42.701, -78.806]; // E ≈ 0.5 km from A, distinct
+    const ab = seg('AB Rd', A, B), bc = seg('BC Rd', B, C), cd = seg('CD Rd', C, D), de = seg('DE Rd', D, E);
+    bc.coords[0] = ab.coords[ab.coords.length - 1];
+    cd.coords[0] = bc.coords[bc.coords.length - 1];
+    de.coords[0] = cd.coords[cd.coords.length - 1];
+    const roads = [ab, bc, cd, de];
+    const opts = { bias: COMPOSITE_WEIGHTS, minKm: 1, targetKm: 22 };
+
+    const [dflt] = buildRides(roads, EMPTY_CATALOG, opts);
+    expect(dflt.summary).toContain('Out-and-back'); // strict default: not an exact cycle
+
+    const loops = buildRides(roads, EMPTY_CATALOG, { ...opts, preferLoops: true });
+    expect(loops.length).toBeGreaterThanOrEqual(1);
+    expect(loops[0].summary).toContain('Loops back'); // near-start return of distinct roads = a loop
+  });
+
+  it('keeps .score pure composite in loop mode', () => {
+    const rides = buildRides(triangle(), EMPTY_CATALOG, {
+      bias: COMPOSITE_WEIGHTS, minKm: 1, targetKm: 20, preferLoops: true,
+    });
+    for (const r of rides) expect(r.score).toBe(compositeScore(r.rubric, COMPOSITE_WEIGHTS));
+  });
+});
+
 describe('buildRides — robustness & invariants (B6, edge)', () => {
   it('8) a tiny-radius scan (one short road) does not regress to []', () => {
     // One road that just clears minKm on its own — must still produce a ride, not an empty list.
