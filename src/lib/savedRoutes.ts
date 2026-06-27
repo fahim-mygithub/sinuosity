@@ -88,3 +88,17 @@ export function toggleSavedRoute(list: SavedRoute[], route: ScenicRoute, now: nu
 export function removeSavedRoute(list: SavedRoute[], id: string): SavedRoute[] {
   return list.filter((s) => s.route.id !== id);
 }
+
+/**
+ * Union two saved lists (e.g. local + cloud at first sign-in), deduped by route id keeping the
+ * entry with the newer `savedAt`, ordered newest-first and capped at {@link MAX_SAVED}. Pure —
+ * neither input is mutated. Used when a rider signs in to fold their on-device rides into the cloud.
+ */
+export function mergeSavedRoutes(a: SavedRoute[], b: SavedRoute[]): SavedRoute[] {
+  const byId = new Map<string, SavedRoute>();
+  for (const entry of [...a, ...b]) {
+    const existing = byId.get(entry.route.id);
+    if (!existing || entry.savedAt > existing.savedAt) byId.set(entry.route.id, entry);
+  }
+  return [...byId.values()].sort((x, y) => y.savedAt - x.savedAt).slice(0, MAX_SAVED);
+}

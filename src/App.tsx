@@ -10,8 +10,18 @@ import { SCENIC_ROUTES } from './data/scenicRoutes';
 import { loadDefaultLocation, saveDefaultLocation, type SavedLocation } from './lib/settings';
 import { loadPreferences, updatePreferences, applyTheme, type Preferences } from './lib/preferences';
 import {
-  loadSavedRoutes, writeSavedRoutes, toggleSavedRoute, removeSavedRoute, isRouteSaved, type SavedRoute,
+  loadSavedRoutes, writeSavedRoutes, toggleSavedRoute, removeSavedRoute, isRouteSaved,
+  mergeSavedRoutes, type SavedRoute,
 } from './lib/savedRoutes';
+import {
+  loadScanHistory, writeScanHistory, addScanRecord, removeScanRecord, makeScanRecord,
+  mergeScanHistory, type ScanRecord,
+} from './lib/scanHistory';
+import { getAccount, onAuthChange, type Account } from './lib/account';
+import {
+  pullSavedRides, pushSavedRide, pushSavedRides, deleteSavedRide,
+  pullScanHistory, pushScanRecord, deleteScanRecord,
+} from './lib/cloudSync';
 import { formatDistance } from './lib/units';
 import { reverseGeocode } from './lib/geocode';
 import { LocationSearch } from './components/LocationSearch';
@@ -53,11 +63,16 @@ export default function App() {
   const chromeRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState('Pick a scenic ride — preview the stops, then send it to Maps');
 
-  // Rider preferences (units / default bias / theme), saved rides, and the settings overlay — all local.
+  // Rider preferences (units / default bias / theme), saved rides, scan history, and the settings
+  // overlay. Preferences are local; saved rides + scan history are local-first and sync to the
+  // signed-in account (Supabase) when there is one.
   const [prefs, setPrefs] = useState<Preferences>(loadPreferences);
   const [saved, setSaved] = useState<SavedRoute[]>(loadSavedRoutes);
+  const [scanHistory, setScanHistory] = useState<ScanRecord[]>(loadScanHistory);
+  const [account, setAccount] = useState<Account | null>(() => getAccount());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const units = prefs.units;
+  const signedIn = account != null;
 
   // Location: the rider's saved default (navigation origin + scan home) and the live scan center.
   const [defaultLocation, setDefaultLocation] = useState<SavedLocation>(loadDefaultLocation);
@@ -97,6 +112,41 @@ export default function App() {
   }, []);
 
   const savedIds = useMemo(() => new Set(saved.map((s) => s.route.id)), [saved]);
+
+  // Track sign-in / sign-out (incl. landing back from a magic link, which resolves a session a
+  // tick after mount and emits here).
+  useEffect(() => onAuthChange(setAccount), []);
+
+  // First time a rider is signed in: pull their cloud rides + scan history, merge the on-device
+  // copies up (local-first, so nothing made offline is lost), and persist the union both ways.
+  // Keyed on the user id so re-emits for the same session don't re-run the merge.
+  useEffect(() => {
+    if (!account) return;
+    let cancelled = false;
+    (async () => {
+      const [cloudSaved, cloudHist] = await Promise.all([pullSavedRides(), pullScanHistory()]);
+      if (cancelled) return;
+
+      const mergedSaved = mergeSavedRoutes(loadSavedRoutes(), cloudSaved);
+      setSaved(mergedSaved);
+      writeSavedRoutes(mergedSaved);
+      const cloudSavedIds = new Set(cloudSaved.map((s) => s.route.id));
+      const localOnlySaved = mergedSaved.filter((s) => !cloudSavedIds.has(s.route.id));
+      if (localOnlySaved.length) await pushSavedRides(localOnlySaved);
+
+      if (cancelled) return;
+      const mergedHist = mergeScanHistory(loadScanHistory(), cloudHist);
+      setScanHistory(mergedHist);
+      writeScanHistory(mergedHist);
+      const cloudHistIds = new Set(cloudHist.map((h) => h.id));
+      for (const h of mergedHist.filter((x) => !cloudHistIds.has(x.id))) {
+        if (cancelled) return;
+        await pushScanRecord(h);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps — keyed on the user id, not the object
+  }, [account?.id]);
 
   // Draw (or replace) the scan-radius ring at `center`, keeping a handle so the radius slider
   // can grow/shrink it live without a re-scan. Call AFTER clearLayers() so it isn't wiped. A visible
@@ -325,24 +375,56 @@ export default function App() {
     }
   }, [showToast]);
 
-  // Save / unsave the current ride. The full route is persisted so it reopens through the same path.
+  // Save / unsave the current ride. The full route is persisted so it reopens through the same
+  // path; when signed in the change also syncs to the rider's account (fire-and-forget — the local
+  // write is the source of truth, the cloud call mirrors it).
   const toggleSaveRoute = useCallback((route: ScenicRoute) => {
     const wasSaved = isRouteSaved(saved, route.id);
-    const next = toggleSavedRoute(saved, route, Date.now());
+    const now = Date.now();
+    const next = toggleSavedRoute(saved, route, now);
     setSaved(next);
     writeSavedRoutes(next);
+    if (signedIn) {
+      if (wasSaved) void deleteSavedRide(route.id);
+      else void pushSavedRide(route, now);
+    }
     showToast(wasSaved ? `Removed “${route.name}” from saved` : `Saved “${route.name}”`);
-  }, [saved, showToast]);
+  }, [saved, signedIn, showToast]);
 
   const removeSaved = useCallback((id: string) => {
     setSaved((prev) => { const next = removeSavedRoute(prev, id); writeSavedRoutes(next); return next; });
-  }, []);
+    if (signedIn) void deleteSavedRide(id);
+  }, [signedIn]);
 
   // Open a saved ride from the settings overlay: close settings, then show its full review.
   const openSavedRoute = useCallback((route: ScenicRoute) => {
     setSettingsOpen(false);
     selectScenic(route);
   }, [selectScenic]);
+
+  // Re-open a logged scan: surface its best (first) ride through the same review path.
+  const openScanRecord = useCallback((record: ScanRecord) => {
+    const best = record.rides[0];
+    if (!best) return;
+    setSettingsOpen(false);
+    selectScenic(best);
+  }, [selectScenic]);
+
+  const removeScanRecord_ = useCallback((id: string) => {
+    setScanHistory((prev) => { const next = removeScanRecord(prev, id); writeScanHistory(next); return next; });
+    if (signedIn) void deleteScanRecord(id);
+  }, [signedIn]);
+
+  // Log a finished scan to history (local-first; mirrored to the account when signed in).
+  const recordScan = useCallback((rides: ScenicRoute[]) => {
+    if (rides.length === 0) return;
+    const record = makeScanRecord(
+      { center: { label: scanCenter.label, lat: scanCenter.lat, lon: scanCenter.lon }, radiusKm: scanRadius, bias, rides },
+      Date.now(),
+    );
+    setScanHistory((prev) => { const next = addScanRecord(prev, record); writeScanHistory(next); return next; });
+    if (signedIn) void pushScanRecord(record);
+  }, [scanCenter, scanRadius, bias, signedIn]);
 
   const runScan = async () => {
     if (!map || scanning) return;
@@ -362,6 +444,7 @@ export default function App() {
       if (rides.length) {
         const b = L.latLngBounds(rides.flatMap((r) => r.coords.map((c) => L.latLng(c[0], c[1]))));
         if (b.isValid()) map.fitBounds(b, fitOptions());
+        recordScan(rides); // log this scan to history (local + cloud when signed in)
       }
       showToast(
         rides.length
@@ -434,9 +517,9 @@ export default function App() {
         <div className="max-w-2xl mx-auto bg-slate-900/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex justify-between items-center">
           <div className="min-w-0">
             <h1 className="text-sm font-black tracking-tight text-white flex items-center gap-1.5">
-              SINUOSITY <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold uppercase">WNY</span>
+              SINUOSITY <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold uppercase">Beta</span>
             </h1>
-            <p className="text-[10px] text-slate-400 mt-0.5 truncate">Twisty + scenic backroads · scout from anywhere</p>
+            <p className="text-[10px] text-slate-400 mt-0.5 truncate">Twisty + scenic backroads · scout anywhere</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <div role="tablist" aria-label="Ride finder mode" className="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
@@ -685,6 +768,9 @@ export default function App() {
           saved={saved}
           onOpenSaved={openSavedRoute}
           onRemoveSaved={removeSaved}
+          history={scanHistory}
+          onOpenScan={openScanRecord}
+          onRemoveScan={removeScanRecord_}
           onClose={() => setSettingsOpen(false)}
         />
       )}

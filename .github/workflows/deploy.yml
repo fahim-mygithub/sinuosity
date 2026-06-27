@@ -31,6 +31,10 @@ jobs:
           # Optional — set this repo secret to enable Google Street View / satellite
           # imagery. Without it the site still works (placeholder + Street View links).
           VITE_GOOGLE_MAPS_KEY: ${{ secrets.VITE_GOOGLE_MAPS_KEY }}
+          # Optional — set BOTH repo secrets to enable passwordless sign-in and cloud sync of
+          # saved rides + scan history. Without them the site builds localStorage-only.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       # SPA fallback so a deep-link refresh under /sinuosity/ doesn't 404.
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5

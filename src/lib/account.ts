@@ -1,10 +1,13 @@
+import type { User } from '@supabase/supabase-js';
+import { supabase, HAS_BACKEND } from './supabase';
+
 /**
- * Account seam. The app is currently localStorage-only — there is no backend — so there is no
- * signed-in user. This module is the SINGLE place the rest of the app asks "who's signed in?",
- * so wiring a real provider later (Supabase / Firebase Google OAuth + a cloud `saved_routes`
- * table) is a localized swap: implement these three functions and nothing else changes its imports.
+ * Account seam — the SINGLE place the rest of the app asks "who's signed in?".
  *
- * Until then `getAccount()` returns null and `signInWithGoogle()` reports the feature isn't live.
+ * Backed by Supabase Auth (email magic link) when the build has credentials; otherwise the app is
+ * localStorage-only and {@link AUTH_ENABLED} is false, exactly as it shipped before. The current
+ * account is held in a module-level cache so callers can read it synchronously ({@link getAccount}),
+ * and {@link onAuthChange} lets the UI re-render on sign-in / sign-out across tabs.
  */
 
 export interface Account {
@@ -15,26 +18,83 @@ export interface Account {
   avatarUrl?: string;
 }
 
-/** Whether a real auth backend is wired. False today (localStorage-only build). */
-export const AUTH_ENABLED = false;
+/** Whether a real auth backend is wired into this build. */
+export const AUTH_ENABLED = HAS_BACKEND;
 
-/** The signed-in rider, or null when none / no backend. */
+let current: Account | null = null;
+const listeners = new Set<(account: Account | null) => void>();
+
+/** Derive a display name: provider full name, else the email's local part, else "Rider". */
+function toAccount(user: User): Account {
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName = typeof meta.full_name === 'string' ? meta.full_name : undefined;
+  const email = user.email ?? '';
+  const name = fullName || (email ? email.split('@')[0] : '') || 'Rider';
+  const avatarUrl = typeof meta.avatar_url === 'string' ? meta.avatar_url : undefined;
+  return { id: user.id, name, email, avatarUrl };
+}
+
+function emit() {
+  for (const cb of listeners) cb(current);
+}
+
+// Hydrate the cache from any persisted session, then track every auth change. The initial
+// getSession resolves the magic-link token if the user just landed back from their email.
+if (supabase) {
+  supabase.auth.getSession().then(({ data }) => {
+    current = data.session ? toAccount(data.session.user) : null;
+    emit();
+  });
+  supabase.auth.onAuthStateChange((_event, session) => {
+    current = session ? toAccount(session.user) : null;
+    emit();
+  });
+}
+
+/** The signed-in rider, or null when none / no backend. Synchronous read of the cached session. */
 export function getAccount(): Account | null {
-  return null;
+  return current;
 }
 
 /**
- * Begin Google sign-in. No-op until a backend is wired — returns a reason the UI can surface so
- * the disabled button stays honest about why it can't sign you in yet.
+ * Subscribe to sign-in / sign-out. Fires with the new account (or null). Returns an unsubscribe.
+ * Note: does not fire immediately — read {@link getAccount} for the current value on mount.
  */
-export function signInWithGoogle(): { ok: false; reason: string } {
-  return {
-    ok: false,
-    reason: 'Google sign-in isn’t live yet — it arrives when cloud sync is enabled.',
-  };
+export function onAuthChange(cb: (account: Account | null) => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
 }
 
-/** Sign out. No-op today. */
-export function signOut(): void {
-  /* no backend session to clear */
+/**
+ * Send a passwordless magic-link sign-in email. The link returns the rider to this same SPA
+ * (origin + Vite base, so it works on both localhost and the GitHub Pages sub-path). Returns a
+ * reason the UI can surface on failure (or when no backend is wired).
+ */
+export async function signInWithEmail(
+  email: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!supabase) {
+    return { ok: false, reason: 'Sign-in isn’t available in this build (no backend configured).' };
+  }
+  const trimmed = email.trim();
+  if (!trimmed) return { ok: false, reason: 'Enter your email to get a sign-in link.' };
+
+  const emailRedirectTo =
+    typeof window !== 'undefined'
+      ? new URL(import.meta.env.BASE_URL || '/', window.location.origin).toString()
+      : undefined;
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email: trimmed,
+    options: { emailRedirectTo },
+  });
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+/** Sign out and clear the cached session. */
+export async function signOut(): Promise<void> {
+  await supabase?.auth.signOut();
+  current = null;
+  emit();
 }

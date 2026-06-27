@@ -1,9 +1,17 @@
-# Sinuosity — WNY Scenic Ride Finder
+# Sinuosity — Scenic Ride Finder
 
-Finds twisty, **scenic** backroads across Western NY, previews the photo-worthy stops with
+Finds twisty, **scenic** backroads **anywhere**, previews the photo-worthy stops with
 Google imagery, and hands the route off to Google/Apple Maps for navigation. Scout from any
 address — the location is a first-class input (geocoded search + "use my location"), with an
-optional saved default home. Three modes:
+optional saved default home. Sign in (passwordless email link) to **save rides and scan
+history to your account** and sync them across devices; signed-out, everything still works
+locally on-device.
+
+> The bundled **Scenic** and **Curated** slates were originally built for the Western New York
+> region as a worked example of the methodology — but the **Scan** tab builds rides from live
+> OpenStreetMap data around *any* location you search, so the app is not tied to one region.
+
+Three modes:
 
 - **Scenic** (default) — a slate of rides from a *build-time pipeline*: candidate corridors
   are **discovered** by ranking WNY's paved through-roads on measured curvature (not a hand
@@ -36,6 +44,42 @@ to `.env.local` and set `VITE_GOOGLE_MAPS_KEY` (enable *Maps Static API* + *Stre
 Static API*; restrict the key to your Pages domain via HTTP referrers). **Without a key the
 app still works** — scenic stops fall back to a placeholder plus keyless "Open in Street
 View" deep-links.
+
+### Sign-in & cloud sync (Supabase, optional)
+
+Riders can **sign in with a passwordless email link** to sync their **saved rides** and
+**scan history** to a free [Supabase](https://supabase.com) backend (Postgres + Auth) and have
+them follow across devices. It's strictly additive: with no Supabase env vars set, the app
+builds and runs exactly as before — localStorage-only, sign-in hidden.
+
+Two env vars wire it up (`.env.example` documents them):
+
+```
+VITE_SUPABASE_URL=...        # Project URL  (Settings -> API)
+VITE_SUPABASE_ANON_KEY=...   # anon/publishable key (safe to ship; guarded by RLS)
+```
+
+**Local dev** — a full backend in Docker, no account needed:
+
+```bash
+supabase start                      # boots Postgres + Auth + a Mailpit mail catcher
+# paste the printed API URL + anon key into .env.local as the two vars above
+npm run dev
+# sign-in emails land at the Mailpit inbox: http://127.0.0.1:54324
+supabase stop                       # when done
+```
+
+The schema (two owner-scoped, RLS-protected tables — `saved_rides` and `scan_history`) lives in
+`supabase/migrations/` and is applied automatically by `supabase start` / `supabase db reset`.
+
+**Production (GitHub Pages)** — create a free hosted Supabase project, run the same migration
+against it (`supabase link` + `supabase db push`, or paste the SQL in the dashboard SQL editor),
+enable the **email** auth provider, add your Pages URL to the auth **redirect allowlist**, then
+set `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` as repo **secrets** (the deploy workflow already
+passes them through). The app code is identical for local and hosted — only the two env vars change.
+
+Architecture: `src/lib/supabase.ts` (env-gated client, `null` with no keys) → `account.ts` (auth
+seam) → `cloudSync.ts` (CRUD) behind the local-first `savedRoutes.ts` / `scanHistory.ts` models.
 
 ## Regenerating the scenic dataset (the agentic pipeline)
 

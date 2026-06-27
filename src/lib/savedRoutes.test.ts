@@ -5,6 +5,7 @@ import {
   isRouteSaved,
   toggleSavedRoute,
   removeSavedRoute,
+  mergeSavedRoutes,
   type SavedRoute,
 } from './savedRoutes';
 import type { ScenicRoute } from '../data/types';
@@ -89,5 +90,44 @@ describe('savedRoutes', () => {
     vi.stubGlobal('localStorage', undefined);
     expect(loadSavedRoutes()).toEqual([]);
     expect(writeSavedRoutes([])).toBe(false);
+  });
+});
+
+describe('mergeSavedRoutes', () => {
+  it('unions two lists, newest-first', () => {
+    const local: SavedRoute[] = [{ route: route('a'), savedAt: 1000 }];
+    const cloud: SavedRoute[] = [{ route: route('b'), savedAt: 2000 }];
+    const merged = mergeSavedRoutes(local, cloud);
+    expect(merged.map((s) => s.route.id)).toEqual(['b', 'a']);
+  });
+
+  it('dedupes by route id, keeping the newer savedAt', () => {
+    const local: SavedRoute[] = [{ route: route('a'), savedAt: 5000 }];
+    const cloud: SavedRoute[] = [{ route: route('a'), savedAt: 1000 }];
+    const merged = mergeSavedRoutes(local, cloud);
+    expect(merged.length).toBe(1);
+    expect(merged[0].savedAt).toBe(5000);
+  });
+
+  it('does not mutate its inputs', () => {
+    const local: SavedRoute[] = [{ route: route('a'), savedAt: 1 }];
+    const cloud: SavedRoute[] = [{ route: route('b'), savedAt: 2 }];
+    mergeSavedRoutes(local, cloud);
+    expect(local.length).toBe(1);
+    expect(cloud.length).toBe(1);
+  });
+
+  it('caps the merged list and keeps the newest entries', () => {
+    const local: SavedRoute[] = Array.from({ length: 150 }, (_, i) => ({
+      route: route(`l${i}`),
+      savedAt: i,
+    }));
+    const cloud: SavedRoute[] = Array.from({ length: 150 }, (_, i) => ({
+      route: route(`c${i}`),
+      savedAt: 1000 + i,
+    }));
+    const merged = mergeSavedRoutes(local, cloud);
+    expect(merged.length).toBe(200); // MAX_SAVED
+    expect(merged[0].savedAt).toBe(1149); // newest first
   });
 });

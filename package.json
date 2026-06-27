@@ -3,7 +3,7 @@
   "private": true,
   "version": "2.0.0",
   "type": "module",
-  "description": "WNY motorcycle ride finder — twisty, scenic backroad scoring from 36 Char Del Way",
+  "description": "Sinuosity — find twisty, scenic motorcycle backroads anywhere; save rides to your account and sync across devices",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -20,6 +20,7 @@
     "curated:build": "node scripts/curate-routes.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.58.0",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

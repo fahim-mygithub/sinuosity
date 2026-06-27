@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { geocode, reverseGeocode, GeocodeError, type GeoResult } from '../lib/geocode';
 import { BIAS_PRESETS } from '../lib/composite';
-import { AUTH_ENABLED, getAccount, signInWithGoogle } from '../lib/account';
+import { AUTH_ENABLED, getAccount, signInWithEmail, signOut, onAuthChange, type Account } from '../lib/account';
 import { formatDistance } from '../lib/units';
 import type { Preferences, Units, Theme } from '../lib/preferences';
 import type { SavedLocation } from '../lib/settings';
 import type { SavedRoute } from '../lib/savedRoutes';
+import type { ScanRecord } from '../lib/scanHistory';
 import type { ScenicRoute } from '../data/types';
 
 /**
- * Settings overlay: rider account (sign-in placeholder until a backend is wired), home location,
- * distance units, the Scan bias preset the app opens on, the UI theme, and the rider's saved
- * rides. All changes are local (localStorage) and take effect immediately. Opens from the gear in
- * the header; Esc or the backdrop closes it.
+ * Settings overlay: rider account (passwordless email sign-in via Supabase, or local-only when no
+ * backend is wired), home location, distance units, the Scan bias preset the app opens on, the UI
+ * theme, the rider's saved rides, and their scan history. Preferences are local; saved rides and
+ * scan history sync to the account when signed in. Opens from the gear in the header; Esc or the
+ * backdrop closes it.
  */
 export function SettingsMenu({
   prefs,
@@ -22,6 +24,9 @@ export function SettingsMenu({
   saved,
   onOpenSaved,
   onRemoveSaved,
+  history,
+  onOpenScan,
+  onRemoveScan,
   onClose,
 }: {
   prefs: Preferences;
@@ -31,6 +36,9 @@ export function SettingsMenu({
   saved: SavedRoute[];
   onOpenSaved: (route: ScenicRoute) => void;
   onRemoveSaved: (id: string) => void;
+  history: ScanRecord[];
+  onOpenScan: (record: ScanRecord) => void;
+  onRemoveScan: (id: string) => void;
   onClose: () => void;
 }) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -71,12 +79,13 @@ export function SettingsMenu({
         </div>
 
         <div className="overflow-y-auto custom-scrollbar px-5 py-4 flex flex-col gap-6">
-          <AccountSection />
+          <AccountSection savedCount={saved.length} historyCount={history.length} />
           <HomeSection home={home} onChangeHome={onChangeHome} />
           <UnitsSection value={prefs.units} onChange={(units) => onChangePrefs({ units })} />
           <BiasSection value={prefs.defaultBiasPreset} onChange={(defaultBiasPreset) => onChangePrefs({ defaultBiasPreset })} />
           <ThemeSection value={prefs.theme} onChange={(theme) => onChangePrefs({ theme })} />
           <SavedSection saved={saved} units={prefs.units} onOpen={onOpenSaved} onRemove={onRemoveSaved} />
+          <ScanHistorySection history={history} units={prefs.units} onOpen={onOpenScan} onRemove={onRemoveScan} />
         </div>
       </div>
     </div>
@@ -93,40 +102,126 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-/** Account: signed-out placeholder + disabled Google button until a backend is wired (account.ts). */
-function AccountSection() {
-  const account = getAccount();
-  const [reason, setReason] = useState('');
+/**
+ * Account: passwordless email sign-in (Supabase magic link) when a backend is wired, else an
+ * honest local-only notice. Subscribes to auth changes so signing in from the emailed link (even
+ * in another tab) updates this panel live. Signed in shows the rider + a sign-out; the count of
+ * synced rides/scans is surfaced so the value of signing in is concrete.
+ */
+function AccountSection({ savedCount, historyCount }: { savedCount: number; historyCount: number }) {
+  const [account, setAccount] = useState<Account | null>(() => getAccount());
+  useEffect(() => onAuthChange(setAccount), []);
 
-  return (
-    <Section title="Account">
-      {account ? (
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [error, setError] = useState('');
+
+  const sendLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (status === 'sending') return;
+    setStatus('sending');
+    setError('');
+    const r = await signInWithEmail(email);
+    if (r.ok) {
+      setStatus('sent');
+    } else {
+      setStatus('idle');
+      setError(r.reason);
+    }
+  };
+
+  if (account) {
+    return (
+      <Section title="Account">
         <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-800 bg-slate-950/40">
-          <div className="h-9 w-9 rounded-full bg-emerald-500 text-slate-950 grid place-items-center font-black">
-            {account.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
+          {account.avatarUrl ? (
+            // eslint-disable-next-line jsx-a11y/img-redundant-alt
+            <img src={account.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
+          ) : (
+            <div className="h-9 w-9 rounded-full bg-emerald-500 text-slate-950 grid place-items-center font-black">
+              {account.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
             <p className="text-[13px] font-bold text-slate-100 truncate">{account.name}</p>
             <p className="text-[11px] text-slate-400 truncate">{account.email}</p>
           </div>
+          <button
+            type="button"
+            onClick={() => { void signOut(); }}
+            className="shrink-0 text-[11px] font-bold text-slate-400 hover:text-rose-400 py-2 px-2 rounded-lg hover:bg-white/5 transition-colors"
+          >
+            Sign out
+          </button>
         </div>
-      ) : (
+        <p className="text-[10px] text-slate-500 leading-snug">
+          {savedCount + historyCount > 0
+            ? `Synced to your account — ${savedCount} saved ride${savedCount === 1 ? '' : 's'} · ${historyCount} scan${historyCount === 1 ? '' : 's'}. They’ll follow you to any device.`
+            : 'Your saved rides & scan history will sync to your account across devices.'}
+        </p>
+      </Section>
+    );
+  }
+
+  if (!AUTH_ENABLED) {
+    return (
+      <Section title="Account">
         <div className="flex flex-col gap-2 p-3 rounded-xl border border-slate-800 bg-slate-950/40">
           <p className="text-[12px] text-slate-300">
-            You’re riding locally — saved routes &amp; settings live on this device.
+            You’re riding locally — saved rides &amp; settings live on this device.
+          </p>
+          <p className="text-[10px] text-slate-500 leading-snug">
+            Cloud accounts &amp; cross-device sync aren’t configured in this build.
+          </p>
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Account">
+      {status === 'sent' ? (
+        <div className="flex flex-col gap-2 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+          <p className="text-[12px] font-bold text-emerald-300">📬 Check your inbox</p>
+          <p className="text-[11px] text-slate-300 leading-snug">
+            We sent a sign-in link to <span className="font-semibold text-slate-100">{email}</span>.
+            Open it on this device to finish signing in — your local rides will merge into your account.
           </p>
           <button
             type="button"
-            disabled={!AUTH_ENABLED}
-            onClick={() => { const r = signInWithGoogle(); if (!r.ok) setReason(r.reason); }}
-            className="h-11 inline-flex items-center justify-center gap-2.5 rounded-xl bg-white text-slate-800 font-semibold text-[13px] disabled:opacity-55 disabled:cursor-not-allowed transition-all"
+            onClick={() => { setStatus('idle'); setError(''); }}
+            className="self-start text-[10px] font-bold text-emerald-400 hover:underline py-1"
           >
-            <GoogleGlyph /> Continue with Google
+            Use a different email
           </button>
-          <p className="text-[10px] text-slate-500 leading-snug">
-            {reason || 'Cloud accounts &amp; cross-device sync are coming soon.'}
-          </p>
         </div>
+      ) : (
+        <form onSubmit={sendLink} className="flex flex-col gap-2 p-3 rounded-xl border border-slate-800 bg-slate-950/40">
+          <p className="text-[12px] text-slate-300">
+            Sign in to save rides &amp; scan history to your account and sync across devices. No password —
+            we email you a sign-in link.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              required
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="flex-1 min-w-0 bg-slate-900 border border-slate-700 focus:border-emerald-500/60 focus:outline-none rounded-lg px-3 py-2 text-[13px] text-slate-100 placeholder:text-slate-500"
+            />
+            <button
+              type="submit"
+              disabled={status === 'sending' || !email.trim()}
+              className="shrink-0 bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-40 text-slate-950 font-bold px-3.5 rounded-lg text-[13px] transition-all"
+            >
+              {status === 'sending' ? '…' : 'Send link'}
+            </button>
+          </div>
+          {error && <p role="alert" className="text-[10px] text-amber-400/90 leading-snug">{error}</p>}
+        </form>
       )}
     </Section>
   );
@@ -334,14 +429,41 @@ function SavedSection({ saved, units, onOpen, onRemove }: {
   );
 }
 
-/** Google "G" mark (official four-color), small. */
-function GoogleGlyph() {
+/** The rider's recent scans — re-open the best ride from each, or remove an entry. */
+function ScanHistorySection({ history, units, onOpen, onRemove }: {
+  history: ScanRecord[]; units: Units; onOpen: (record: ScanRecord) => void; onRemove: (id: string) => void;
+}) {
   return (
-    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden focusable="false">
-      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8a12 12 0 1 1 7.9-21l5.7-5.7A20 20 0 1 0 24 44c11 0 20-9 20-20 0-1.3-.1-2.3-.4-3.5z" />
-      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8A12 12 0 0 1 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7A20 20 0 0 0 6.3 14.7z" />
-      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A12 12 0 0 1 12.7 28l-6.6 5.1A20 20 0 0 0 24 44z" />
-      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3a12 12 0 0 1-4.1 5.6l6.2 5.2C39.9 35.6 44 30.3 44 24c0-1.3-.1-2.3-.4-3.5z" />
-    </svg>
+    <Section title={`Scan history${history.length ? ` · ${history.length}` : ''}`}>
+      {history.length === 0 ? (
+        <p className="text-[11px] text-slate-400 italic leading-snug">
+          No scans yet. Run a scan from the Scan tab and the rides you build will be logged here.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {history.map((h) => (
+            <li key={h.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-800 bg-slate-900/40">
+              <button
+                onClick={() => onOpen(h)}
+                disabled={h.rides.length === 0}
+                className="min-w-0 flex-1 text-left disabled:opacity-60"
+              >
+                <p className="text-[13px] font-bold text-slate-100 truncate">📍 {h.center.label}</p>
+                <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                  {formatDistance(h.radiusKm, units)} radius · {h.rideCount} ride{h.rideCount === 1 ? '' : 's'}
+                </p>
+              </button>
+              <button
+                onClick={() => onRemove(h.id)}
+                aria-label={`Remove scan of ${h.center.label} from history`}
+                className="shrink-0 h-8 w-8 grid place-items-center rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/5 transition-colors"
+              >
+                🗑
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
