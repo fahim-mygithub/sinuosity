@@ -85,6 +85,48 @@ describe('buildRides', () => {
   });
 });
 
+// A closed ring road: its endpoints return near the start, so it classifies as a loop.
+function ringRoad(id: string, cLat: number, cLon: number, rKm = 1.5): ScoredRoad {
+  const n = 14;
+  const coords: LatLng[] = [];
+  const dLat = rKm / 111;
+  const dLon = rKm / (111 * Math.cos((cLat * Math.PI) / 180));
+  for (let i = 0; i <= n; i++) {
+    const a = (2 * Math.PI * i) / n;
+    coords.push([+(cLat + dLat * Math.sin(a)).toFixed(5), +(cLon + dLon * Math.cos(a)).toFixed(5)]);
+  }
+  return { id, name: id, curveDensity: 2, sinuosity: 8, score: 0, rubric: rubric({ curvature: 5 }), coords };
+}
+
+describe('loop mode is a preference, not an exclusive filter (Zoar Valley Rd regression)', () => {
+  it('still surfaces a high-rank through-road even when the area forms a loop', () => {
+    const loop = ringRoad('Ring Rd', 42.7, -78.5); // a real loop (endpoints return near start)
+    const through = road('Ridge Rd', -78.95, -78.72, rubric({ curvature: 9 })); // strong linear through-road
+    const rides = buildRides([loop, through], EMPTY_CATALOG, {
+      bias: COMPOSITE_WEIGHTS, minKm: 2, preferLoops: true,
+    });
+    // A loop genuinely exists (old code would have returned ONLY loops)…
+    expect(rides.some((r) => /Loops back near where it starts/.test(r.summary))).toBe(true);
+    // …yet the better through-road is NOT discarded — the whole point of the fix.
+    expect(rides.some((r) => r.name.includes('Ridge Rd'))).toBe(true);
+  });
+});
+
+describe('marquee single-road surfacing', () => {
+  it('surfaces an exceptional single road on its own, even past the normal minKm gate', () => {
+    // ~3.3 km road that the normal builder would DROP at minKm 10, but it's a stellar road.
+    const star = road('Skyline Dr', -78.9, -78.86, rubric({ curvature: 10, scenery: 8, greenery: 7 }));
+    const rides = buildRides([star], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 10 });
+    expect(rides.some((r) => r.name.includes('Skyline Dr'))).toBe(true);
+  });
+
+  it('does NOT manufacture a marquee from a mediocre road', () => {
+    const meh = road('Plain Rd', -78.9, -78.86, rubric({ curvature: 3 })); // below the marquee bar
+    const rides = buildRides([meh], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 10 });
+    expect(rides).toHaveLength(0);
+  });
+});
+
 // Two flat (curvature-free) roads sharing a junction, so they STITCH (chain>1, descriptor applies)
 // and the corridor is densely sampled — isolates water/viewpoint behaviour from curve scoring.
 function flatHalf(id: string, lon0: number, lon1: number): ScoredRoad {
@@ -342,8 +384,9 @@ describe('buildRides — loop mode (preferLoops)', () => {
     return [ab, bc, ca];
   };
 
-  it('returns ONLY loop-shaped rides when a loop exists (the out-and-back is filtered out)', () => {
+  it('prefers loops (ranks them first) but does NOT filter out a strong through-road', () => {
     // A closing triangle (a real loop) PLUS a disjoint straight pair far away (an out-and-back).
+    // Old behaviour returned ONLY the loop; the fix keeps the out-and-back too (Zoar Valley Rd miss).
     const tri = triangle();
     const sx = road('Straight X', -77.10, -77.06, rubric());
     const sy = road('Straight Y', -77.06, -77.02, rubric());
@@ -351,11 +394,10 @@ describe('buildRides — loop mode (preferLoops)', () => {
     const rides = buildRides([...tri, sx, sy], EMPTY_CATALOG, {
       bias: COMPOSITE_WEIGHTS, minKm: 1, targetKm: 20, preferLoops: true,
     });
-    expect(rides.length).toBeGreaterThanOrEqual(1);
-    for (const r of rides) {
-      expect(r.summary).toContain('Loops back');
-      expect(r.summary).not.toContain('Out-and-back');
-    }
+    // Both shapes are returned: a loop exists (old code would have returned ONLY loops)…
+    expect(rides.some((r) => r.summary.includes('Loops back'))).toBe(true);
+    // …and the disjoint out-and-back is still surfaced rather than silently dropped (the fix).
+    expect(rides.some((r) => r.summary.includes('Out-and-back'))).toBe(true);
   });
 
   it('falls back to the best ride (never empty) when no loop can be formed', () => {
@@ -392,9 +434,10 @@ describe('buildRides — loop mode (preferLoops)', () => {
 
     // Default overshoots down the spur — the square never closes.
     expect(dflt.every((r) => !r.summary.includes('Loops back'))).toBe(true);
-    // Loop mode returns the closed square.
+    // Loop mode CLOSES the square — the loop is built and (with the loop rank bonus) ranks first.
     expect(loops.length).toBeGreaterThanOrEqual(1);
-    expect(loops.every((r) => r.summary.includes('Loops back'))).toBe(true);
+    expect(loops.some((r) => r.summary.includes('Loops back'))).toBe(true);
+    expect(loops[0].summary).toContain('Loops back');
   });
 
   it('treats a distinct-road circuit that returns NEAR (not exactly on) the start as a loop — only in loop mode', () => {

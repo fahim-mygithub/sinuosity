@@ -10,6 +10,8 @@ export interface ScannedRoad {
   coords: LatLng[];
   /** OSM `highway` class (secondary/tertiary/unclassified/...), if tagged. */
   highway?: string;
+  /** OSM `ref` (route number, e.g. "CR 74"), if tagged — used to follow a corridor across name changes. */
+  ref?: string;
   /** OSM `surface` value, if tagged. */
   surface?: string;
   /** Posted speed in mph parsed from OSM `maxspeed`, or `null` when unknown/ambiguous. */
@@ -51,6 +53,12 @@ export interface ScenicRubric {
   greenery: number;
   water: number;
   notability: number;
+  /**
+   * Elevation drama (0-10): how much climb/descent the road has — steepest pitch, total relief
+   * and climbing per km, blended. Optional: only the Live scan measures it (from a terrain
+   * profile); the baked scenic/curated datasets are 2D and omit it. See src/lib/elevation.ts.
+   */
+  gradeDrama?: number;
 }
 
 /**

@@ -22,7 +22,7 @@ import {
   pullSavedRides, pushSavedRide, pushSavedRides, deleteSavedRide,
   pullScanHistory, pushScanRecord, deleteScanRecord,
 } from './lib/cloudSync';
-import { formatDistance } from './lib/units';
+import { formatDistance, toUnits, fromUnits, distanceLabel } from './lib/units';
 import { reverseGeocode } from './lib/geocode';
 import { LocationSearch } from './components/LocationSearch';
 import { ScenicRouteReview } from './components/ScenicRouteReview';
@@ -34,6 +34,7 @@ import type { LatLng } from './lib/geometry';
 /** Bias-slider rows (label per rubric dimension), in display order. */
 const BIAS_ROWS: { key: keyof BiasWeights; label: string; icon: string }[] = [
   { key: 'curvature', label: 'Twisties', icon: '🌀' },
+  { key: 'gradeDrama', label: 'Elevation', icon: '⛰️' },
   { key: 'scenery', label: 'Scenery', icon: '🌄' },
   { key: 'greenery', label: 'Greenery', icon: '🌲' },
   { key: 'water', label: 'Water', icon: '💧' },
@@ -665,8 +666,8 @@ export default function App() {
               />
               <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col">
                 <label htmlFor="scan-radius" className="text-[10px] font-bold text-slate-300">Search radius</label>
-                <input id="scan-radius" type="range" min={5} max={30} value={scanRadius} aria-label="Search radius in kilometers" aria-valuetext={`${scanRadius} kilometers`} onChange={(e) => setScanRadius(+e.target.value)} />
-                <div className="text-right font-mono text-emerald-400 font-bold text-sm">{scanRadius} km</div>
+                <input id="scan-radius" type="range" min={Math.round(toUnits(5, units))} max={Math.round(toUnits(30, units))} value={Math.round(toUnits(scanRadius, units))} aria-label={`Search radius in ${units === 'mi' ? 'miles' : 'kilometers'}`} aria-valuetext={`${Math.round(toUnits(scanRadius, units))} ${units === 'mi' ? 'miles' : 'kilometers'}`} onChange={(e) => setScanRadius(fromUnits(+e.target.value, units))} />
+                <div className="text-right font-mono text-emerald-400 font-bold text-sm">{Math.round(toUnits(scanRadius, units))} {distanceLabel(units)}</div>
                 <p className="text-[10px] text-slate-500 mt-1">Tip: drag the green center pin on the map to move the scan area.</p>
               </div>
 
@@ -715,12 +716,12 @@ export default function App() {
                 {showWeights && (
                   <div className="flex flex-col gap-1.5 pt-1">
                     {BIAS_ROWS.map(({ key, label, icon }) => {
-                      const pct = Math.round(normalizeWeights(bias)[key] * 100);
+                      const pct = Math.round((normalizeWeights(bias)[key] ?? 0) * 100);
                       return (
                         <div key={key} className="flex items-center gap-2">
                           <span className="w-20 shrink-0 text-[11px] font-semibold text-slate-300">{icon} {label}</span>
                           <input
-                            type="range" min={0} max={1} step={0.05} value={bias[key]}
+                            type="range" min={0} max={1} step={0.05} value={bias[key] ?? 0}
                             aria-label={`${label} importance`} aria-valuetext={`${pct} percent`}
                             onChange={(e) => setWeight(key, +e.target.value)}
                             className="flex-1"
@@ -746,7 +747,7 @@ export default function App() {
                           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} aria-hidden />
                           <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
                         </div>
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {formatDistance(r.distanceKm, units)} · 🌀{r.rubric.curvature.toFixed(1)} 💧{r.rubric.water.toFixed(1)} 🌲{r.rubric.greenery.toFixed(1)} 📍{r.rubric.notability.toFixed(1)}</p>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {formatDistance(r.distanceKm, units)} · 🌀{r.rubric.curvature.toFixed(1)}{r.rubric.gradeDrama != null ? ` ⛰️${r.rubric.gradeDrama.toFixed(1)}` : ''} 💧{r.rubric.water.toFixed(1)} 🌲{r.rubric.greenery.toFixed(1)} 📍{r.rubric.notability.toFixed(1)}</p>
                       </div>
                       <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{r.score}</span>
                     </button>

@@ -44,6 +44,15 @@ const DEFAULT_ONSET = 0.5; // homeward pull begins at this fraction of targetKm 
 const LOOP_RETURN_BIAS = 1.6; // stronger homeward pull when the rider asks for loops
 const LOOP_ONSET = 0.3; // …and it begins earlier, so chains have room to curve back and close
 const LOOP_CLOSE_FRAC = 0.4; // once the chain is ≥ this fraction of targetKm, snap shut at the start
+// Loop mode is a PREFERENCE, not an exclusive filter: a genuine loop sorts ahead of a comparable
+// out-and-back by this rank multiplier, but a markedly better through-road still surfaces (the fix
+// for the Zoar Valley Rd miss, where two junk loops hid the best road in the area).
+const LOOP_RANK_BONUS = 1.25;
+// Marquee single-road guarantee: an exceptional candidate road is surfaced on its own (along its
+// full same-name/ref corridor) even if stitching/loop logic would otherwise bury it.
+const MARQUEE_SCORE = 50; // composite (0–100) the standout road must clear under the rider's bias
+const MARQUEE_CURVE = 6; // …and this measured flow-curvature, so only a genuinely good road qualifies
+const MARQUEE_MIN_KM = 2; // a marquee road can be shorter than the normal minKm and still be worth it
 
 /** Shape of a stitched ride. A `loop` returns near its start through the graph; everything else is
  *  an honest `out-and-back` (you retrace to come home). */
@@ -93,7 +102,8 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
   // minKm/length gate passes, so a discarded chain frees its roads for later seeds.
   const used = new Set<number>();
 
-  const built: { route: ScenicRoute; rank: number; shape: RideShape }[] = [];
+  type Built = { route: ScenicRoute; rank: number; shape: RideShape; seed: number; members: number[] };
+  const built: Built[] = [];
   let palette = 0;
 
   // In loop mode we keep exploring until we have maxRides LOOPS (capped at maxRides*5 total attempts
@@ -213,26 +223,129 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
       coords, km, seedRoad, chain, chainRoads, shape,
       catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel,
     );
-    built.push({ route, rank: rideRank(route, chainRoads), shape });
+    built.push({ route, rank: rideRank(route, chainRoads), shape, seed, members: [...claimed] });
     palette++;
   }
 
   // Sort by internal rank (score × rideability); .score itself is untouched/pure (B6).
   built.sort((a, b) => b.rank - a.rank);
 
-  // Loop mode: surface only the round-trip loops. If the area formed none, fall back to the
-  // best-ranked rides (honestly labeled out-and-back) so the rider is never left empty-handed.
-  if (preferLoops) {
-    const loops = built.filter((b) => b.shape === 'loop');
-    return (loops.length ? loops : built).slice(0, maxRides).map((b) => b.route);
+  // Loop mode is a strong PREFERENCE, not an exclusive filter. A linear through-road can never be a
+  // loop, so the old loops-only return silently dropped the best roads the moment the area formed
+  // any loop (the Zoar Valley Rd miss). Instead, give genuine loops a rank bonus so they sort first
+  // among comparable rides, while a markedly better out-and-back still surfaces.
+  const ordered = preferLoops
+    ? [...built]
+        .map((b) => ({ b, key: b.rank * (b.shape === 'loop' ? LOOP_RANK_BONUS : 1) }))
+        .sort((x, y) => y.key - x.key)
+        .map((x) => x.b)
+    : built;
+
+  // Marquee guarantee: make sure the single standout road in the area is surfaced on its own — along
+  // its FULL same-name/ref corridor — even if loop/stitch logic would otherwise bury it. Fires only
+  // when that road clears a high bar AND isn't already represented in the rides we'd return.
+  const withMarquee = injectMarquee(ordered, maxRides);
+  return withMarquee.slice(0, maxRides).map((b) => b.route);
+
+  // --- marquee helpers (closure over roads/endpoints/comp/order/catalog/bias) ---------------------
+
+  /** Follow the seed's contiguous same-name/ref ways to both ends into one corridor polyline. */
+  function walkCorridor(seedIdx: number): { coords: LatLng[]; members: number[] } {
+    const ref = roads[seedIdx];
+    const members = new Set<number>([seedIdx]);
+    let coords: LatLng[] = [...ref.coords];
+    // Extend forward off the current tail.
+    for (let guard = 0; guard < TAIL_CAP; guard++) {
+      const tk = key(coords[coords.length - 1]);
+      const next = (endpoints.get(tk) ?? []).find((i) => !members.has(i) && sameCorridor(ref, roads[i]));
+      if (next === undefined) break;
+      let nc = roads[next].coords;
+      if (key(nc[0]) !== tk) nc = reversed(nc);
+      coords = coords.concat(nc.slice(1));
+      members.add(next);
+    }
+    // Extend backward off the current head.
+    for (let guard = 0; guard < TAIL_CAP; guard++) {
+      const hk = key(coords[0]);
+      const prev = (endpoints.get(hk) ?? []).find((i) => !members.has(i) && sameCorridor(ref, roads[i]));
+      if (prev === undefined) break;
+      let pc = roads[prev].coords;
+      if (key(pc[pc.length - 1]) !== hk) pc = reversed(pc);
+      coords = pc.slice(0, -1).concat(coords);
+      members.add(prev);
+    }
+    return { coords, members: [...members] };
   }
-  return built.map((b) => b.route);
+
+  /** Build a standalone ride from a marquee road's full corridor, or null if it doesn't hold up. */
+  function buildMarquee(seedIdx: number): Built | null {
+    const { coords: raw, members } = walkCorridor(seedIdx);
+    const cleaned = cleanCoords(raw);
+    const coords = downsample(dropBacktracks(cleaned, { bandM: 25 }), 150);
+    const km = pathLength(coords);
+    if (km < MARQUEE_MIN_KM || coords.length < 4) return null;
+    const chainRoads = members.map((i) => roads[i]);
+    const gapKm = haversine(coords[0], coords[coords.length - 1]);
+    const shape: RideShape = gapKm <= closeKm ? 'loop' : 'out-and-back';
+    const route = toScenicRoute(
+      coords, km, roads[seedIdx], [coords], chainRoads, shape,
+      catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel,
+    );
+    return { route, rank: rideRank(route, chainRoads), shape, seed: seedIdx, members };
+  }
+
+  /** Prepend a marquee ride for the top-composite road if it clears the bar and isn't already shown. */
+  function injectMarquee(list: Built[], limit: number): Built[] {
+    if (!order.length) return list;
+    const idx = order[0]; // highest composite candidate under the rider's bias
+    if (comp[idx] < MARQUEE_SCORE || (roads[idx].rubric.curvature ?? 0) < MARQUEE_CURVE) return list;
+    const represented = list.slice(0, limit).some((b) => b.members.includes(idx));
+    if (represented) return list;
+    const mq = buildMarquee(idx);
+    return mq ? [mq, ...list] : list;
+  }
 }
 
 /** Last coordinate of a chain of polylines. */
 function lastPoint(chain: LatLng[][]): LatLng {
   const last = chain[chain.length - 1];
   return last[last.length - 1];
+}
+
+/**
+ * The stitched ride's elevation dimension: a length-weighted average of the `gradeDrama` measured
+ * (by scanArea, from a terrain profile) on the roads in the chain. Returns `undefined` when no leg
+ * carries an elevation signal (e.g. the terrain lookup was unavailable) so the rest of the rubric
+ * is untouched and the UI hides the Elevation row rather than showing a misleading 0.
+ */
+function chainGradeDrama(chainRoads: ScoredRoad[]): number | undefined {
+  let wSum = 0;
+  let vSum = 0;
+  let any = false;
+  for (const r of chainRoads) {
+    const g = r.rubric?.gradeDrama;
+    if (g == null) continue;
+    any = true;
+    const len = Math.max(pathLength(r.coords), 0.001);
+    wSum += len;
+    vSum += g * len;
+  }
+  return any && wSum > 0 ? Math.round((vSum / wSum) * 10) / 10 : undefined;
+}
+
+/** Normalized corridor identity of a road: its name (if real) and its `ref` (route number). */
+function corridorName(r: ScoredRoad): string | null {
+  return r.name && r.name !== 'Unnamed road' ? r.name.trim().toLowerCase() : null;
+}
+function corridorRef(r: ScoredRoad): string | null {
+  return r.ref ? r.ref.trim().toLowerCase() : null;
+}
+/** Whether `other` continues the SAME named/numbered corridor as the reference road `ref`. */
+function sameCorridor(ref: ScoredRoad, other: ScoredRoad): boolean {
+  const n = corridorName(ref);
+  if (n && n === corridorName(other)) return true;
+  const r = corridorRef(ref);
+  return !!r && r === corridorRef(other);
 }
 
 /**
@@ -412,12 +525,14 @@ function toScenicRoute(
     if (d < viewMinM) viewMinM = d;
   }
   const m = measureRubric(coords, { ...catalog.tells, viewMinM });
+  const gradeDrama = chainGradeDrama(chainRoads); // elevation carried from the scanned legs
   const rubric: ScenicRubric = {
     curvature: flowCurvature(coords), // rideable flow, junction corners excluded (see geometry.ts)
     scenery: m.scenery,
     greenery: m.greenery,
     water: m.water,
     notability: m.notability,
+    ...(gradeDrama != null ? { gradeDrama } : {}),
   };
   const score = compositeScore(rubric, bias);
   const shore = shorelineFraction(coords, catalog.tells);

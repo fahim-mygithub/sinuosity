@@ -249,7 +249,9 @@ function RubricMeters({ rubric }: { rubric: ScenicRubric }) {
   return (
     <div className="space-y-3">
       {RUBRIC_LABELS.map(({ key, label }) => {
-        const v = Math.max(0, Math.min(10, rubric[key]));
+        const raw = rubric[key];
+        if (raw == null || !Number.isFinite(raw)) return null; // e.g. baked routes carry no Elevation
+        const v = Math.max(0, Math.min(10, raw));
         return (
           <div key={key} className="flex items-center gap-3">
             <span className="w-16 shrink-0 text-[11px] font-semibold text-slate-300">{label}</span>

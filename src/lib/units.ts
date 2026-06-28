@@ -8,6 +8,11 @@ export function toUnits(km: number, units: Units): number {
   return units === 'mi' ? km / KM_PER_MI : km;
 }
 
+/** Inverse of {@link toUnits}: take a value in the rider's unit and return km (the internal unit). */
+export function fromUnits(value: number, units: Units): number {
+  return units === 'mi' ? value * KM_PER_MI : value;
+}
+
 /**
  * Format a distance held in km for display, e.g. `formatDistance(37, 'mi') === '23 mi'`.
  * Rounds to a whole number (these are coarse ride lengths). Non-finite input → '—'.

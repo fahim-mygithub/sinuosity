@@ -3,6 +3,7 @@ import { sinuosityScore, flowCurvature, pathLength, haversine, parseMaxspeedMph,
 import type { ScannedRoad, ScoredRoad, ScenicRubric } from '../data/types';
 import { fetchFeatureCatalog, type FeatureCatalog } from './features';
 import { measureRubric } from './sceneryTells';
+import { fetchElevations, gradeMetrics, gradeDrama10, sampleAlong } from './elevation';
 
 /**
  * Public Overpass mirrors, tried in order. The pool was rebuilt from browser-side probes of the
@@ -143,6 +144,7 @@ function parseRoads(elements: OverpassElement[]): ScannedRoad[] {
       score: Math.min(100, Math.round(s * 30)),
       coords: pts,
       highway: el.tags?.highway,
+      ref: el.tags?.ref,
       surface,
       maxspeedMph: parseMaxspeedMph(el.tags?.maxspeed),
       paved: isPaved(surface),
@@ -289,10 +291,47 @@ export async function scanArea(
     return { ...r, rubric };
   });
 
+  // Add the elevation signal (gradeDrama) to the strongest candidates. Strictly additive: if the
+  // terrain lookup fails or is unavailable, gradeDrama stays unset and the scan ranks on the other
+  // five dimensions exactly as before. Bounded so the browser stays responsive on a wide radius.
+  await enrichElevation(roads, signal);
+
   const result: AreaScan = { roads, catalog, center, radiusKm };
   areaCache.set(key, result);
   if (areaCache.size > SCAN_CACHE_CAP) areaCache.delete(areaCache.keys().next().value!);
   return result;
+}
+
+// Elevation enrichment is bounded by a total sample budget: we profile the top candidates (already
+// curvature-sorted) until the budget is spent, so a wide scan never balloons into hundreds of
+// terrain points. The rest simply carry no elevation signal — the curve gate already ranked them low.
+const ELEV_TOP_K = 60;
+const ELEV_POINT_BUDGET = 700;
+
+/**
+ * Measure `gradeDrama` for the top candidate roads from a real terrain profile (Open-Meteo), in a
+ * single batched, parallel lookup. Mutates each enriched road's `rubric.gradeDrama` in place. Never
+ * throws and silently no-ops when the lookup is unavailable (graceful degradation).
+ */
+async function enrichElevation(roads: ScoredRoad[], signal?: AbortSignal): Promise<void> {
+  const targets = roads.slice(0, ELEV_TOP_K);
+  const spans: { road: ScoredRoad; start: number; pts: LatLng[] }[] = [];
+  const all: LatLng[] = [];
+  for (const r of targets) {
+    if (all.length >= ELEV_POINT_BUDGET) break;
+    const pts = sampleAlong(r.coords, { spacingKm: 0.4, minN: 6, maxN: 24 });
+    spans.push({ road: r, start: all.length, pts });
+    all.push(...pts);
+  }
+  if (!all.length) return;
+
+  const elev = await fetchElevations(all, signal);
+  if (!elev) return; // no elevation signal this scan — every other dimension is unaffected
+
+  for (const s of spans) {
+    const e = elev.slice(s.start, s.start + s.pts.length);
+    s.road.rubric.gradeDrama = gradeDrama10(gradeMetrics(s.pts, e), pathLength(s.road.coords));
+  }
 }
 
 /**

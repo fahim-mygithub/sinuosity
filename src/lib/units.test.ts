@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toUnits, formatDistance, distanceValue, distanceLabel } from './units';
+import { toUnits, fromUnits, formatDistance, distanceValue, distanceLabel } from './units';
 
 describe('units', () => {
   it('keeps km unchanged in km mode', () => {
@@ -20,6 +20,13 @@ describe('units', () => {
   it('handles non-finite input', () => {
     expect(formatDistance(NaN, 'mi')).toBe('—');
     expect(distanceValue(NaN, 'km')).toBe(0);
+  });
+
+  it('fromUnits inverts toUnits (km stays km, mi → km)', () => {
+    expect(fromUnits(40, 'km')).toBe(40);
+    expect(fromUnits(25, 'mi')).toBeCloseTo(40.23, 1);
+    // round-trips: a km value survives there-and-back through the rider's unit
+    expect(fromUnits(toUnits(12, 'mi'), 'mi')).toBeCloseTo(12, 5);
   });
 
   it('distanceLabel echoes the unit', () => {
