@@ -31,6 +31,7 @@ export function ScenicRouteReview({
   units,
   isSaved,
   onToggleSave,
+  community,
 }: {
   route: ScenicRoute;
   onBack: () => void;
@@ -43,6 +44,17 @@ export function ScenicRouteReview({
   isSaved: boolean;
   /** Toggle this ride's saved state. */
   onToggleSave: () => void;
+  /** Community publish/like controls — present only when a backend is configured. */
+  community?: {
+    signedIn: boolean;
+    /** The server public-ride id when this ride is published (by the rider, or a gallery ride). */
+    publishedId: string | null;
+    /** Live like count when known (a gallery ride); null when not loaded. */
+    likeCount: number | null;
+    liked: boolean;
+    onPublishToggle: () => void;
+    onLikeToggle: () => void;
+  };
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const heroRef = useRef<HTMLDivElement | null>(null);
@@ -194,6 +206,35 @@ export function ScenicRouteReview({
             <dt className="text-[10px] uppercase tracking-wider text-slate-400 mt-0.5">scenic stops</dt>
           </div>
         </dl>
+
+        {/* Community: publish this ride / like a published one */}
+        {community && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {community.signedIn ? (
+              <button
+                onClick={community.onPublishToggle}
+                aria-pressed={!!community.publishedId}
+                title={community.publishedId ? 'Published to the community — tap to remove' : 'Publish this ride to the community'}
+                className={`h-10 px-4 inline-flex items-center gap-1.5 rounded-xl text-[13px] font-bold transition-all active:scale-[.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${community.publishedId ? 'bg-emerald-500/15 ring-1 ring-emerald-500/40 text-emerald-300' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'}`}
+              >
+                {community.publishedId ? '✓ Published' : '＋ Publish to Community'}
+              </button>
+            ) : (
+              <span className="text-[11px] text-slate-400">Sign in from Settings to publish this ride to the community.</span>
+            )}
+            {community.publishedId && community.likeCount != null && (
+              <button
+                onClick={community.onLikeToggle}
+                disabled={!community.signedIn}
+                aria-pressed={community.liked}
+                aria-label={community.liked ? 'Remove your like' : 'Like this ride'}
+                className={`h-10 px-4 inline-flex items-center gap-1.5 rounded-xl text-[13px] font-bold ring-1 transition-all active:scale-[.98] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${community.liked ? 'bg-emerald-500/15 ring-emerald-500/40 text-emerald-300' : 'bg-slate-800 ring-slate-700 text-slate-200 hover:ring-emerald-500/40'}`}
+              >
+                <span aria-hidden>👍</span> {community.likeCount}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Pull-quote */}
         {route.whyRide && (

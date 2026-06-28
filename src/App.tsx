@@ -17,10 +17,12 @@ import {
   loadScanHistory, writeScanHistory, addScanRecord, removeScanRecord, makeScanRecord,
   mergeScanHistory, type ScanRecord,
 } from './lib/scanHistory';
-import { getAccount, onAuthChange, type Account } from './lib/account';
+import { getAccount, onAuthChange, AUTH_ENABLED, type Account } from './lib/account';
 import {
   pullSavedRides, pushSavedRide, pushSavedRides, deleteSavedRide,
   pullScanHistory, pushScanRecord, deleteScanRecord,
+  pullPublicRides, publishRide, unpublishRide, pullMyPublished, toggleReaction, pullMyReactions,
+  type PublicRide,
 } from './lib/cloudSync';
 import { formatDistance, toUnits, fromUnits, distanceLabel } from './lib/units';
 import { reverseGeocode } from './lib/geocode';
@@ -41,7 +43,7 @@ const BIAS_ROWS: { key: keyof BiasWeights; label: string; icon: string }[] = [
   { key: 'notability', label: 'Notable', icon: '📍' },
 ];
 
-type Tab = 'scenic' | 'curated' | 'scanner';
+type Tab = 'scenic' | 'curated' | 'scanner' | 'community';
 
 /** Resolve a saved bias-preset id back to its preset (falls back to the first/Balanced). */
 const presetById = (id: string) => BIAS_PRESETS.find((p) => p.id === id) ?? BIAS_PRESETS[0];
@@ -113,6 +115,16 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const scanController = useRef<AbortController | null>(null);
+
+  // Community tab: the public gallery, the rider's own published rides (route id → public id), and
+  // their 👍 likes (public ride ids). `activePublic` is the gallery ride currently open in the cruise
+  // page, so its live counts/like state drive the page's community controls.
+  const [communityRides, setCommunityRides] = useState<PublicRide[]>([]);
+  const [communitySort, setCommunitySort] = useState<'new' | 'top'>('new');
+  const [communityLoading, setCommunityLoading] = useState(false);
+  const [myPublished, setMyPublished] = useState<Map<string, string>>(new Map());
+  const [myLikes, setMyLikes] = useState<Set<string>>(new Set());
+  const [activePublic, setActivePublic] = useState<PublicRide | null>(null);
   // Live handle on the dashed scan-radius ring so the slider can resize it in place, plus a
   // visible, draggable center pin (Leaflet marker) that moves the whole scan area.
   const scanCircleRef = useRef<L.Circle | null>(null);
@@ -256,9 +268,16 @@ export default function App() {
   const selectScenic = useCallback((r: ScenicRoute, originEl?: HTMLElement | null) => {
     lastScenicFocus.current = originEl ?? null;
     setScenicDetail(r);
+    setActivePublic(null); // cleared by default; openPublicRide re-sets it for a gallery ride
     setActiveStopIdx(null);
     setReviewOpen(true);
   }, []);
+
+  // Open a community gallery ride: remember the public row (for live counts/like state), then review.
+  const openPublicRide = useCallback((pr: PublicRide, originEl?: HTMLElement | null) => {
+    selectScenic(pr.route, originEl);
+    setActivePublic(pr);
+  }, [selectScenic]);
 
   // Back from the full-page review: clear the route and restore focus to the list.
   const closeReview = useCallback(() => {
@@ -348,6 +367,60 @@ export default function App() {
     }
     return rides;
   }, [map, clearLayers, drawScanCircle, drawRides, scanCenter.label]);
+
+  // --- Community tab ---------------------------------------------------------------------------
+  // Pull the public gallery (+ the rider's own published rides and likes) and draw the rides.
+  const loadCommunity = useCallback(async (sort: 'new' | 'top') => {
+    setCommunityLoading(true);
+    const [rides, mine, reactions] = await Promise.all([pullPublicRides(sort), pullMyPublished(), pullMyReactions()]);
+    setCommunityRides(rides);
+    setMyPublished(mine);
+    setMyLikes(reactions.likes);
+    setCommunityLoading(false);
+    if (map) {
+      clearLayers();
+      drawRides(rides.map((r) => r.route));
+      const all = rides.flatMap((r) => routeBoundsCoords(r.route));
+      if (all.length) {
+        const b = L.latLngBounds(all.map((c) => L.latLng(c[0], c[1])));
+        if (b.isValid()) map.fitBounds(b, fitOptions());
+      } else {
+        map.setView(homeCenter, 9);
+      }
+    }
+  }, [map, clearLayers, drawRides, fitOptions, homeCenter]);
+
+  // Publish the open ride, or unpublish it if it's already the rider's published ride.
+  const handlePublishToggle = useCallback(async (route: ScenicRoute, publishedId: string | null) => {
+    if (!signedIn) { showToast('Sign in (Settings) to publish a ride to the community'); return; }
+    if (publishedId) {
+      await unpublishRide(publishedId);
+      setMyPublished((prev) => { const m = new Map(prev); m.delete(route.id); return m; });
+      setActivePublic((p) => (p && p.id === publishedId ? null : p));
+      setCommunityRides((prev) => prev.filter((r) => r.id !== publishedId));
+      showToast(`Removed “${route.name}” from the community`);
+    } else {
+      const pr = await publishRide(route);
+      if (pr) {
+        setMyPublished((prev) => new Map(prev).set(route.id, pr.id));
+        setActivePublic(pr);
+        showToast(`Published “${route.name}” to the community`);
+      } else {
+        showToast('Could not publish — try again in a moment');
+      }
+    }
+  }, [signedIn, showToast]);
+
+  // Toggle the rider's 👍 on a published ride (optimistic; the trigger keeps the server count true).
+  const handleLikeToggle = useCallback((publicRideId: string) => {
+    if (!signedIn) { showToast('Sign in (Settings) to like community rides'); return; }
+    const liked = myLikes.has(publicRideId);
+    const delta = liked ? -1 : 1;
+    setMyLikes((prev) => { const s = new Set(prev); if (liked) s.delete(publicRideId); else s.add(publicRideId); return s; });
+    setCommunityRides((prev) => prev.map((r) => (r.id === publicRideId ? { ...r, likeCount: Math.max(0, r.likeCount + delta) } : r)));
+    setActivePublic((p) => (p && p.id === publicRideId ? { ...p, likeCount: Math.max(0, p.likeCount + delta) } : p));
+    void toggleReaction(publicRideId, 'like', !liked);
+  }, [signedIn, myLikes, showToast]);
 
   // --- Location handlers (Scan tab) -------------------------------------------------------
   // Recenter the scan on a chosen place: reset prior results, redraw the radius ring, fly there.
@@ -532,8 +605,17 @@ export default function App() {
       drawScanCircle(scanCenterLatLng);
       if (scanRides.length) drawRides(scanRides);
       map.setView(scanCenterLatLng, 10);
+    } else if (t === 'community') {
+      setActivePublic(null);
+      void loadCommunity(communitySort);
     }
   };
+
+  // Reload the gallery when the sort flips (only while the Community tab is open).
+  useEffect(() => {
+    if (tab === 'community') void loadCommunity(communitySort);
+    // eslint-disable-next-line react-hooks/exhaustive-deps — keyed on the sort toggle
+  }, [communitySort]);
 
   const browsing = tab === 'scenic' || tab === 'curated';
   const browseTitle = tab === 'curated' ? 'Curated rides' : 'Scenic rides';
@@ -557,10 +639,11 @@ export default function App() {
             <p className="text-[10px] text-slate-400 mt-0.5 truncate">Twisty + scenic backroads · scout anywhere</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <div role="tablist" aria-label="Ride finder mode" className="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
-              <button role="tab" aria-selected={tab === 'scenic'} onClick={() => switchTab('scenic')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'scenic' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scenic</button>
-              <button role="tab" aria-selected={tab === 'curated'} onClick={() => switchTab('curated')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'curated' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Curated</button>
-              <button role="tab" aria-selected={tab === 'scanner'} onClick={() => switchTab('scanner')} className={`px-2.5 py-2 rounded-lg text-[12px] font-bold transition-all ${tab === 'scanner' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scan</button>
+            <div role="tablist" aria-label="Ride finder mode" className="flex items-center gap-0.5 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+              <button role="tab" aria-selected={tab === 'scenic'} onClick={() => switchTab('scenic')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'scenic' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scenic</button>
+              <button role="tab" aria-selected={tab === 'curated'} onClick={() => switchTab('curated')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'curated' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Curated</button>
+              <button role="tab" aria-selected={tab === 'scanner'} onClick={() => switchTab('scanner')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'scanner' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scan</button>
+              <button role="tab" aria-selected={tab === 'community'} onClick={() => switchTab('community')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'community' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Community</button>
             </div>
             <button
               type="button"
@@ -807,6 +890,51 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {tab === 'community' && (
+            <div className="flex flex-col gap-3 overflow-hidden">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Community rides</h2>
+                  <p className="text-[10px] text-slate-400">Rides published by other riders — open one, or publish your own from any ride’s page</p>
+                </div>
+                <div className="flex items-center gap-0.5 bg-slate-950/60 p-0.5 rounded-lg border border-slate-800 shrink-0" role="group" aria-label="Sort community rides">
+                  <button onClick={() => setCommunitySort('new')} aria-pressed={communitySort === 'new'} className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${communitySort === 'new' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>New</button>
+                  <button onClick={() => setCommunitySort('top')} aria-pressed={communitySort === 'top'} className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${communitySort === 'top' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Top</button>
+                </div>
+              </div>
+              {!signedIn && (
+                <p className="text-[10px] text-slate-400 bg-slate-950/50 border border-slate-800 rounded-lg p-2.5">Browsing is open to everyone. Sign in from <span className="font-semibold text-slate-300">Settings ⚙️</span> to publish your own rides and like others’.</p>
+              )}
+              <div className="overflow-y-auto custom-scrollbar space-y-2 pr-1" style={{ maxHeight: sheet.isMobile ? '64vh' : '60vh' }}>
+                {communityLoading ? (
+                  <p className="text-[11px] text-slate-400 italic text-center py-6">Loading community rides…</p>
+                ) : communityRides.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic text-center py-6">No community rides yet — be the first: open any ride and tap “Publish to Community”.</p>
+                ) : (
+                  communityRides.map((pr) => (
+                    <button
+                      key={pr.id}
+                      onClick={(e) => openPublicRide(pr, e.currentTarget)}
+                      aria-current={scenicDetail?.id === pr.route.id ? 'true' : undefined}
+                      style={{ borderColor: pr.route.color, boxShadow: scenicDetail?.id === pr.route.id ? `0 0 0 2px ${pr.route.color}66` : undefined }}
+                      className={`w-full flex justify-between items-center gap-2 p-3 rounded-xl border-2 active:scale-[.99] transition-all text-left ${scenicDetail?.id === pr.route.id ? 'bg-emerald-500/10' : 'bg-slate-900/40'}`}
+                    >
+                      <div className="min-w-0 pr-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: pr.route.color }} aria-hidden />
+                          <h4 className="font-bold text-[13px] text-slate-100 truncate">{pr.route.name}</h4>
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{pr.route.theme} · {formatDistance(pr.route.distanceKm, units)} · by {pr.authorName}{pr.mine ? ' (you)' : ''}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">👍 {pr.likeCount} · 💾 {pr.saveCount}</p>
+                      </div>
+                      <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{pr.route.score}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -828,18 +956,32 @@ export default function App() {
       )}
       </div>
 
-      {/* Full-page review overlay — shared by scenic, curated AND scan-built rides */}
-      {reviewOpen && scenicDetail && (
-        <ScenicRouteReview
-          route={scenicDetail}
-          onBack={closeReview}
-          onLocate={locateStop}
-          origin={tab === 'scanner' ? scanCenterLatLng : homeCenter}
-          units={units}
-          isSaved={savedIds.has(scenicDetail.id)}
-          onToggleSave={() => toggleSaveRoute(scenicDetail)}
-        />
-      )}
+      {/* Full-page review overlay — shared by scenic, curated, scan-built AND community rides */}
+      {reviewOpen && scenicDetail && (() => {
+        // Is the open ride already a public ride? (the gallery row we opened, or one the rider published)
+        const isActive = activePublic && activePublic.route.id === scenicDetail.id;
+        const publishedId = isActive ? activePublic!.id : (myPublished.get(scenicDetail.id) ?? null);
+        const likeCount = isActive ? activePublic!.likeCount : null;
+        return (
+          <ScenicRouteReview
+            route={scenicDetail}
+            onBack={closeReview}
+            onLocate={locateStop}
+            origin={tab === 'scanner' ? scanCenterLatLng : homeCenter}
+            units={units}
+            isSaved={savedIds.has(scenicDetail.id)}
+            onToggleSave={() => toggleSaveRoute(scenicDetail)}
+            community={AUTH_ENABLED ? {
+              signedIn,
+              publishedId,
+              likeCount,
+              liked: publishedId ? myLikes.has(publishedId) : false,
+              onPublishToggle: () => { void handlePublishToggle(scenicDetail, publishedId); },
+              onLikeToggle: () => { if (publishedId) handleLikeToggle(publishedId); },
+            } : undefined}
+          />
+        );
+      })()}
     </div>
   );
 }
