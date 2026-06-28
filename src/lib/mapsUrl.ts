@@ -67,12 +67,18 @@ export function pickWaypoints(coords: LatLng[], max: number): LatLng[] {
  * Google Maps directions URL using the documented Maps URLs API (api=1). The waypoint cap is
  * platform-aware (mobile 3 / desktop 9) unless `maxWaypoints` is given. More, evenly-spaced
  * waypoints keep Google on the actual scenic geometry instead of shortcutting to an expressway.
+ *
+ * When `returnCoords` is given (a loop's connector circuit home), the navigable path becomes the
+ * fun road FOLLOWED BY the return, so the destination lands back at the start — a true round trip.
  */
 export function googleMapsUrl(
   coords: LatLng[],
-  opts: { origin?: LatLng; maxWaypoints?: number } = {},
+  opts: { origin?: LatLng; maxWaypoints?: number; returnCoords?: LatLng[] } = {},
 ): string {
-  const valid = coords.filter(isValid);
+  const fun = coords.filter(isValid);
+  const ret = (opts.returnCoords ?? []).filter(isValid);
+  // For a loop, navigate the whole circuit (fun road + the way back); otherwise just the fun road.
+  const valid = ret.length ? [...fun, ...ret] : fun;
   const origin = opts.origin && isValid(opts.origin) ? opts.origin : HOME;
   const dest = valid[valid.length - 1] ?? origin;
   const cap = opts.maxWaypoints ?? (isMobileBrowser() ? MOBILE_WAYPOINT_CAP : DESKTOP_WAYPOINT_CAP);

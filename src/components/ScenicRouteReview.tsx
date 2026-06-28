@@ -56,7 +56,12 @@ export function ScenicRouteReview({
     maptype: 'hybrid',
     stops: route.stops.map((s) => [s.lat, s.lon] as [number, number]),
   });
-  const gmaps = googleMapsUrl(route.coords, { origin });
+  // A real connector circuit (loop mode) makes the Google handoff a round trip back to the start;
+  // a retrace/out-and-back keeps the straight there-and-back handoff (the rider obviously turns around).
+  const gmaps = googleMapsUrl(route.coords, {
+    origin,
+    returnCoords: route.returnKind === 'circuit' ? route.returnCoords : undefined,
+  });
   const amaps = appleMapsUrl(route.coords, origin);
 
   // Focus the back button on open; Esc closes.

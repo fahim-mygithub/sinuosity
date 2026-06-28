@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildRides, synthesizeStops, rideabilityFactor } from './routeBuilder';
 import { COMPOSITE_WEIGHTS, compositeScore } from './composite';
-import type { LatLng } from './geometry';
-import type { ScoredRoad, ScenicRubric, ScenicStop } from '../data/types';
+import { haversine, type LatLng } from './geometry';
+import type { ScannedRoad, ScoredRoad, ScenicRubric, ScenicStop } from '../data/types';
 import type { FeatureCatalog, ScenicPOI } from './features';
 
 const rubric = (o: Partial<ScenicRubric> = {}): ScenicRubric => ({
@@ -514,5 +514,86 @@ describe('buildRides — robustness & invariants (B6, edge)', () => {
     b.coords[0] = a.coords[a.coords.length - 1];
     const [r] = buildRides([a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
     expect(r.drivingTime).toMatch(/min|h/);
+  });
+});
+
+describe('buildRides — loop return leg (dashed way back to the start)', () => {
+  // A straight connector way between two exact endpoints (lives in the corpus, not the candidates).
+  const connector = (id: string, p0: LatLng, p1: LatLng): ScannedRoad => {
+    const n = 6;
+    const coords: LatLng[] = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      coords.push([+(p0[0] + (p1[0] - p0[0]) * t).toFixed(5), +(p0[1] + (p1[1] - p0[1]) * t).toFixed(5)]);
+    }
+    coords[0] = p0;
+    coords[coords.length - 1] = p1;
+    return { id, name: id, curveDensity: 0, sinuosity: 0, score: 0, coords };
+  };
+
+  it('does NOT attach a return leg when loop mode is off', () => {
+    const a = road('Solo A', -78.84, -78.80, rubric());
+    const b = road('Solo B', -78.80, -78.76, rubric());
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const rides = buildRides([a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(rides.every((r) => r.returnCoords === undefined && r.returnKind === undefined)).toBe(true);
+  });
+
+  it('retraces the fun road (dashed) in loop mode when no connectors are available', () => {
+    const a = road('Solo A', -78.84, -78.80, rubric());
+    const b = road('Solo B', -78.80, -78.76, rubric());
+    b.coords[0] = a.coords[a.coords.length - 1];
+    const rides = buildRides([a, b], EMPTY_CATALOG, { bias: COMPOSITE_WEIGHTS, minKm: 1, preferLoops: true });
+    // A linear ride gets a retrace return; none can be a real circuit without connectors.
+    expect(rides.some((r) => r.returnKind === 'retrace' && (r.returnCoords?.length ?? 0) >= 2)).toBe(true);
+    expect(rides.every((r) => r.returnKind !== 'circuit')).toBe(true);
+    const retrace = rides.find((r) => r.returnKind === 'retrace')!;
+    expect(retrace.summary).toContain('Out-and-back');
+  });
+
+  it('closes a linear road into a real circuit over connector roads (the Zoar Valley Rd intent)', () => {
+    // A single curvy fun road; the way home only exists via plain connector roads in the corpus.
+    const F = road('Ridge Rd', -78.86, -78.80, rubric({ curvature: 9 }));
+    const start = F.coords[0];
+    const end = F.coords[F.coords.length - 1];
+    const P2: LatLng = [42.68, -78.80];
+    const P3: LatLng = [42.68, -78.86];
+    const corpus: ScannedRoad[] = [
+      F,
+      connector('c1', end, P2),
+      connector('c2', P2, P3),
+      connector('c3', P3, start),
+    ];
+    const rides = buildRides([F], EMPTY_CATALOG, {
+      bias: COMPOSITE_WEIGHTS, minKm: 1, preferLoops: true, connectors: corpus,
+    });
+    const r = rides.find((x) => x.name.includes('Ridge Rd')) ?? rides[0];
+    expect(r.returnKind).toBe('circuit');
+    expect(r.summary).toContain('Loops back');
+    // The circuit rides its own (different) roads: it's far longer than a straight retrace would be,
+    // and it ends back near the ride's start.
+    const ret = r.returnCoords!;
+    expect(ret.length).toBeGreaterThan(2);
+    expect(haversine(ret[ret.length - 1], start) * 1000).toBeLessThan(40);
+  });
+
+  it('falls back to a retrace when the only circuit home blows the length budget', () => {
+    // Same shape, but the connector box is enormous → the circuit exceeds the return budget.
+    const F = road('Ridge Rd', -78.86, -78.80, rubric({ curvature: 9 }));
+    const start = F.coords[0];
+    const end = F.coords[F.coords.length - 1];
+    const P2: LatLng = [41.90, -78.80]; // ~90 km south — way past the budget
+    const P3: LatLng = [41.90, -78.86];
+    const corpus: ScannedRoad[] = [
+      F,
+      connector('c1', end, P2),
+      connector('c2', P2, P3),
+      connector('c3', P3, start),
+    ];
+    const rides = buildRides([F], EMPTY_CATALOG, {
+      bias: COMPOSITE_WEIGHTS, minKm: 1, preferLoops: true, connectors: corpus,
+    });
+    const r = rides.find((x) => x.name.includes('Ridge Rd')) ?? rides[0];
+    expect(r.returnKind).toBe('retrace');
   });
 });

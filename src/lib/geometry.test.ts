@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { haversine, pathLength, sinuosityScore, sharpestTurnIndices, flowCurvature, dropBacktracks, cumulativeKm, type LatLng } from './geometry';
+import { haversine, pathLength, sinuosityScore, sharpestTurnIndices, flowCurvature, dropBacktracks, cumulativeKm, offsetPath, type LatLng } from './geometry';
+
+describe('offsetPath', () => {
+  it('returns the input unchanged for fewer than 2 points', () => {
+    expect(offsetPath([], 50)).toEqual([]);
+    expect(offsetPath([[42.7, -78.8]], 50)).toEqual([[42.7, -78.8]]);
+  });
+
+  it('shifts a straight east-west line consistently to one side by ~the given ground distance', () => {
+    const line: LatLng[] = Array.from({ length: 10 }, (_, i) => [42.70, -78.80 + i * 0.002] as LatLng);
+    const off = offsetPath(line, 50); // 50 m
+    expect(off).toHaveLength(line.length);
+    const expectedDeg = 50 / 111320; // latitude degrees for 50 m
+    const dLats = off.map((p, i) => p[0] - line[i][0]);
+    // A straight line offsets every vertex by the same latitude delta (longitude ~unchanged).
+    for (let i = 0; i < off.length; i++) {
+      expect(Math.abs(dLats[i])).toBeCloseTo(expectedDeg, 5);
+      expect(Math.sign(dLats[i])).toBe(Math.sign(dLats[0])); // same side for all points
+      expect(off[i][1]).toBeCloseTo(line[i][1], 4); // east position barely moves
+    }
+  });
+
+  it('keeps the offset line about as long as the original', () => {
+    const line: LatLng[] = Array.from({ length: 12 }, (_, i) => [42.70 + i * 0.001, -78.80 + i * 0.0015] as LatLng);
+    const off = offsetPath(line, 40);
+    expect(pathLength(off)).toBeCloseTo(pathLength(line), 1);
+  });
+});
 
 describe('flowCurvature', () => {
   // A straight road that makes ONE 90° turn into a side street (the intersection-corner case).

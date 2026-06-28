@@ -29,7 +29,7 @@ import { ScenicRouteReview } from './components/ScenicRouteReview';
 import { SettingsMenu } from './components/SettingsMenu';
 import { KIND_ICON } from './lib/scenicMeta';
 import type { ScenicRoute, ScenicStop } from './data/types';
-import type { LatLng } from './lib/geometry';
+import { offsetPath, type LatLng } from './lib/geometry';
 
 /** Bias-slider rows (label per rubric dimension), in display order. */
 const BIAS_ROWS: { key: keyof BiasWeights; label: string; icon: string }[] = [
@@ -50,6 +50,22 @@ const SCENIC_SORTED = [...SCENIC_ROUTES].sort((a, b) => b.score - a.score);
 const CURATED_SORTED = [...CURATED_ROUTES].sort((a, b) => b.score - a.score);
 const escapeHtml = (s: string) => s.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
 const SCAN_CIRCLE = { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.04, weight: 1, dashArray: '5,8' };
+// A loop ride's dashed "way back to the start" leg. A `retrace` return is offset this many metres
+// beside the outbound line so the round trip reads as two passes; a `circuit` return rides its own
+// (different) connector roads and is drawn as-is.
+const RETURN_OFFSET_M = 45;
+const RETURN_DASH = { weight: 3, opacity: 0.7, dashArray: '3,9', lineCap: 'round' as const };
+
+/** A loop ride's return leg, ready to draw (offset for a retrace, on its own roads for a circuit). */
+function returnDrawCoords(r: ScenicRoute): LatLng[] | null {
+  if (!r.returnCoords || r.returnCoords.length < 2) return null;
+  return r.returnKind === 'retrace' ? offsetPath(r.returnCoords, RETURN_OFFSET_M) : r.returnCoords;
+}
+
+/** All coords a ride occupies (fun road + its return leg), for fitBounds. */
+function routeBoundsCoords(r: ScenicRoute): LatLng[] {
+  return r.returnCoords?.length ? [...r.coords, ...r.returnCoords] : r.coords;
+}
 
 export default function App() {
   const { map, ready, clearLayers, addLayer } = useLeafletMap('map');
@@ -270,6 +286,16 @@ export default function App() {
   const drawRides = useCallback((rides: ScenicRoute[]) => {
     rides.forEach((r) => {
       const open = () => selectScenic(r);
+      // Dashed return leg first (underneath), so the solid fun road sits on top.
+      const ret = returnDrawCoords(r);
+      if (ret) {
+        const retHit = L.polyline(ret, { color: r.color, weight: 16, opacity: 0 });
+        const retLine = L.polyline(ret, { color: r.color, ...RETURN_DASH });
+        retHit.on('click', open);
+        retLine.on('click', open);
+        addLayer(retHit);
+        addLayer(retLine);
+      }
       const hit = L.polyline(r.coords, { color: r.color, weight: 18, opacity: 0 });
       const line = L.polyline(r.coords, { color: r.color, weight: 4, opacity: 0.9 });
       hit.on('click', open);
@@ -287,11 +313,13 @@ export default function App() {
     clearLayers();
     if (scenicDetail) {
       const r = scenicDetail;
+      const ret = returnDrawCoords(r);
+      if (ret) addLayer(L.polyline(ret, { color: r.color, ...RETURN_DASH }));
       addLayer(L.polyline(r.coords, { color: r.color, weight: 5, opacity: 0.92 }));
       r.stops.forEach((s, i) => drawScenicStop(s, i, r.color, i === activeStopIdx));
       // Fit once per route — not on activeStopIdx change, so "Locate" flyTo isn't overridden.
       if (fittedRouteId.current !== r.id) {
-        const b = L.polyline(r.coords).getBounds();
+        const b = L.polyline(routeBoundsCoords(r)).getBounds();
         if (b.isValid()) map.fitBounds(b, fitOptions());
         fittedRouteId.current = r.id;
       }
@@ -305,7 +333,7 @@ export default function App() {
   // Re-rank + redraw from the cached area corpus under a bias — no network. Used both right after a
   // scan and whenever the rider nudges a bias slider, so weighting changes feel instant.
   const rebuildRides = useCallback((scan: AreaScan, b: BiasWeights, loops: boolean): ScenicRoute[] => {
-    const rides = buildRides(scan.roads, scan.catalog, { bias: b, areaLabel: scanCenter.label, preferLoops: loops });
+    const rides = buildRides(scan.roads, scan.catalog, { bias: b, areaLabel: scanCenter.label, preferLoops: loops, connectors: scan.corpus });
     setScanRides(rides);
     if (map) {
       clearLayers();
@@ -443,7 +471,7 @@ export default function App() {
       setAreaScan(scan);
       const rides = rebuildRides(scan, bias, loopMode);
       if (rides.length) {
-        const b = L.latLngBounds(rides.flatMap((r) => r.coords.map((c) => L.latLng(c[0], c[1]))));
+        const b = L.latLngBounds(rides.flatMap((r) => routeBoundsCoords(r).map((c) => L.latLng(c[0], c[1]))));
         if (b.isValid()) map.fitBounds(b, fitOptions());
         recordScan(rides); // log this scan to history (local + cloud when signed in)
       }

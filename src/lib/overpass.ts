@@ -213,6 +213,12 @@ export interface AreaScan {
   catalog: FeatureCatalog;
   center: LatLng;
   radiusKm: number;
+  /**
+   * The FULL parsed road corpus (every secondary/tertiary/unclassified way in the radius), not just
+   * the curvy candidates. Loop mode routes a circuit home over these connector roads — a linear
+   * road can't be circled with the curvy candidates alone. See routeBuilder `connectors`.
+   */
+  corpus: ScannedRoad[];
 }
 
 const areaCache = new Map<string, AreaScan>();
@@ -296,7 +302,7 @@ export async function scanArea(
   // five dimensions exactly as before. Bounded so the browser stays responsive on a wide radius.
   await enrichElevation(roads, signal);
 
-  const result: AreaScan = { roads, catalog, center, radiusKm };
+  const result: AreaScan = { roads, catalog, center, radiusKm, corpus };
   areaCache.set(key, result);
   if (areaCache.size > SCAN_CACHE_CAP) areaCache.delete(areaCache.keys().next().value!);
   return result;

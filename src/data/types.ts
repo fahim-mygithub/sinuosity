@@ -79,7 +79,15 @@ export interface ScenicRoute {
   /** Composite 0-100 score (judge-adjusted). */
   score: number;
   color: string;
-  /** Snapped, road-following polyline. */
+  /** Snapped, road-following polyline — the highlighted (solid) ride; what the rubric is measured on. */
   coords: LatLng[];
+  /**
+   * Loop mode only: the dashed "way back to the start" leg, drawn after the solid ride. A `circuit`
+   * is a genuinely different road home (real connector roads); a `retrace` is the fun road reversed
+   * (a good road both ways), drawn offset beside the outbound line. Absent ⇒ no return leg drawn
+   * (an out-and-back outside loop mode, or a ride that already closes on itself). See returnPath.ts.
+   */
+  returnCoords?: LatLng[];
+  returnKind?: 'circuit' | 'retrace';
   stops: ScenicStop[];
 }

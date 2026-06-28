@@ -373,6 +373,40 @@ function retraces(pts: LatLng[], i: number, j: number, bandM: number): boolean {
 }
 
 /**
+ * Offset a polyline perpendicular to its direction of travel by `meters`, consistently to one side
+ * (the sign picks the side). Approximate — each vertex is shifted along the average normal of its
+ * adjacent segments, with cos-lat correction so the offset is a true ground distance. This is a
+ * DRAWING helper only (to lay an out-and-back's retrace return beside the outbound line so the
+ * round trip reads as two passes); it is never used for navigation geometry. Returns the input
+ * unchanged for fewer than 2 points.
+ */
+export function offsetPath(coords: LatLng[], meters: number): LatLng[] {
+  if (coords.length < 2) return coords;
+  const degPerM = 1 / 111320; // latitude degrees per metre
+  const out: LatLng[] = [];
+  for (let i = 0; i < coords.length; i++) {
+    // Tangent = average of the incoming and outgoing ground vectors (one of them at the ends).
+    const prev = coords[i - 1];
+    const next = coords[i + 1];
+    const here = coords[i];
+    let tx = 0; // latitude axis
+    let ty = 0; // east axis (cos-lat scaled)
+    if (prev) { const v = groundVector(prev, here); tx += v[0]; ty += v[1]; }
+    if (next) { const v = groundVector(here, next); tx += v[0]; ty += v[1]; }
+    const mag = Math.hypot(tx, ty);
+    if (mag === 0) { out.push(here); continue; }
+    tx /= mag; ty /= mag;
+    // Right-hand normal (rotate the tangent −90°): (x, y) → (y, −x).
+    const nx = ty;
+    const ny = -tx;
+    const cos = Math.cos((here[0] * Math.PI) / 180) || 1;
+    const d = meters * degPerM;
+    out.push([here[0] + nx * d, here[1] + (ny * d) / cos]);
+  }
+  return out;
+}
+
+/**
  * Index of the point with the sharpest turn (largest angular deviation).
  * Useful for picking route-defining waypoints rather than evenly-spaced ones.
  */

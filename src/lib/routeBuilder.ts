@@ -1,8 +1,16 @@
 import { haversine, pathLength, cleanCoords, flowCurvature, bearing, dropBacktracks, type LatLng } from './geometry';
 import { measureRubric, pointInRing, OPEN_WATER_W, MINOR_WATER_W, type RubricTells } from './sceneryTells';
 import { compositeScore, type BiasWeights } from './composite';
+import { getReturnGraph, findReturnPath, type ReturnGraph } from './returnPath';
 import type { FeatureCatalog, ScenicPOI } from './features';
-import type { ScoredRoad, ScenicRoute, ScenicRubric, ScenicStop } from '../data/types';
+import type { ScannedRoad, ScoredRoad, ScenicRoute, ScenicRubric, ScenicStop } from '../data/types';
+
+/** A loop ride's dashed "way back to the start" — a `circuit` (different connector roads) or a
+ *  `retrace` (the fun road reversed). See returnPath.ts and the loop-return design doc. */
+export interface LoopReturn {
+  coords: LatLng[];
+  kind: 'circuit' | 'retrace';
+}
 
 /**
  * Stitch scored roads into composite "discovered rides" and dress each as a full ScenicRoute so it
@@ -31,6 +39,13 @@ export interface BuildOptions {
    * fall back to the best rides (honestly labeled out-and-back) so the list is never empty.
    */
   preferLoops?: boolean;
+  /**
+   * The FULL scanned road corpus (every secondary/tertiary/unclassified way in the radius), used in
+   * loop mode to route a genuine circuit back to the start over connector roads the candidate set
+   * filters out. Optional: without it, loop-mode linear rides fall back to a dashed retrace. Only
+   * read when `preferLoops` is set. See returnPath.ts.
+   */
+  connectors?: ScannedRoad[];
 }
 
 const round4 = (n: number) => n.toFixed(4);
@@ -53,6 +68,10 @@ const LOOP_RANK_BONUS = 1.25;
 const MARQUEE_SCORE = 50; // composite (0–100) the standout road must clear under the rider's bias
 const MARQUEE_CURVE = 6; // …and this measured flow-curvature, so only a genuinely good road qualifies
 const MARQUEE_MIN_KM = 2; // a marquee road can be shorter than the normal minKm and still be worth it
+// Loop-return budget: a circuit back to the start is only worth taking if the fun road stays a
+// meaningful fraction of the loop. Reject a connector return longer than this (km) and retrace instead.
+const RETURN_MAX_ABS_KM = 50;
+const returnBudgetKm = (featuredKm: number) => Math.min(RETURN_MAX_ABS_KM, Math.max(featuredKm * 2.5, featuredKm + 8));
 
 /** Shape of a stitched ride. A `loop` returns near its start through the graph; everything else is
  *  an honest `out-and-back` (you retrace to come home). */
@@ -79,6 +98,9 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
   const preferLoops = !!opts.preferLoops;
   const returnBias = preferLoops ? LOOP_RETURN_BIAS : RETURN_BIAS;
   const onset = preferLoops ? LOOP_ONSET : DEFAULT_ONSET;
+  // Connector graph for routing a genuine circuit home (loop mode only); memoized per corpus array.
+  const returnGraph: ReturnGraph | null =
+    preferLoops && opts.connectors && opts.connectors.length ? getReturnGraph(opts.connectors) : null;
 
   // Composite under the current bias decides both seed order and which neighbour to chain next.
   const comp = roads.map((r) => compositeScore(r.rubric, bias));
@@ -219,11 +241,21 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
     // Commit: the chain is a keeper, so its roads are now used.
     for (const i of claimed) used.add(i);
 
+    // Loop mode: close a LINEAR ride with a dashed return — a real connector circuit if one exists
+    // within budget, else a retrace of the fun road. An already-closed ride needs no return leg.
+    let finalShape = shape;
+    let loopReturn: LoopReturn | undefined;
+    if (preferLoops && shape === 'out-and-back') {
+      const excl = new Set([...claimed].map((i) => roads[i].id));
+      loopReturn = loopReturnFor(start, lastPoint(chain), coords, excl, km);
+      if (loopReturn?.kind === 'circuit') finalShape = 'loop';
+    }
+
     const route = toScenicRoute(
-      coords, km, seedRoad, chain, chainRoads, shape,
-      catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel,
+      coords, km, seedRoad, chain, chainRoads, finalShape,
+      catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel, loopReturn,
     );
-    built.push({ route, rank: rideRank(route, chainRoads), shape, seed, members: [...claimed] });
+    built.push({ route, rank: rideRank(route, chainRoads), shape: finalShape, seed, members: [...claimed] });
     palette++;
   }
 
@@ -286,12 +318,42 @@ export function buildRides(roads: ScoredRoad[], catalog: FeatureCatalog, opts: B
     if (km < MARQUEE_MIN_KM || coords.length < 4) return null;
     const chainRoads = members.map((i) => roads[i]);
     const gapKm = haversine(coords[0], coords[coords.length - 1]);
-    const shape: RideShape = gapKm <= closeKm ? 'loop' : 'out-and-back';
+    let shape: RideShape = gapKm <= closeKm ? 'loop' : 'out-and-back';
+    let loopReturn: LoopReturn | undefined;
+    if (preferLoops && shape === 'out-and-back') {
+      const excl = new Set(members.map((i) => roads[i].id));
+      loopReturn = loopReturnFor(raw[0], raw[raw.length - 1], coords, excl, km);
+      if (loopReturn?.kind === 'circuit') shape = 'loop';
+    }
     const route = toScenicRoute(
       coords, km, roads[seedIdx], [coords], chainRoads, shape,
-      catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel,
+      catalog, bias, PALETTE[palette % PALETTE.length], opts.areaLabel, loopReturn,
     );
     return { route, rank: rideRank(route, chainRoads), shape, seed: seedIdx, members };
+  }
+
+  /**
+   * A loop ride's dashed return for a LINEAR ride: the shortest connector circuit back to the start
+   * (over the full corpus, avoiding the ride's own ways) if one is within budget, otherwise a
+   * retrace of the fun road. Returns undefined outside loop mode. (Hoisted — used by the seed loop
+   * above and buildMarquee.)
+   */
+  function loopReturnFor(
+    startJ: LatLng,
+    endJ: LatLng,
+    featuredCoords: LatLng[],
+    excludeIds: Set<string>,
+    featuredKm: number,
+  ): LoopReturn | undefined {
+    if (!preferLoops) return undefined;
+    if (returnGraph) {
+      const circuit = findReturnPath(returnGraph, endJ, startJ, {
+        excludeWayIds: excludeIds,
+        maxKm: returnBudgetKm(featuredKm),
+      });
+      if (circuit && circuit.length >= 2 && pathLength(circuit) > 0.1) return { coords: circuit, kind: 'circuit' };
+    }
+    return { coords: reversed(featuredCoords), kind: 'retrace' };
   }
 
   /** Prepend a marquee ride for the top-composite road if it clears the bar and isn't already shown. */
@@ -513,6 +575,7 @@ function toScenicRoute(
   bias: BiasWeights,
   color: string,
   areaLabel?: string,
+  loopReturn?: LoopReturn,
 ): ScenicRoute {
   // Only VERIFIED viewpoints (named or wiki-tagged) feed the notability floor — bare unnamed
   // `tourism=viewpoint` map-tells are unreliable (the audit found off-road, no-imagery points).
@@ -542,7 +605,7 @@ function toScenicRoute(
   const { theme, summary, whyRide } = describe(rubric, km, { shore, creek, greenContain, stopCount: stops.length });
   // Shape clause appended to copy only; the theme cascade & descriptors stay byte-for-byte (B7).
   const startEndGapKm = coords.length >= 2 ? haversine(coords[0], coords[coords.length - 1]) : 0;
-  const shapeClause = shapeClauseFor(shape, startEndGapKm);
+  const shapeClause = shapeClauseFor(shape, startEndGapKm, loopReturn?.kind);
   const name = rideName(seed, chain, rubric, shape, { shore, creek, greenContain });
 
   return {
@@ -558,6 +621,7 @@ function toScenicRoute(
     score,
     color,
     coords,
+    ...(loopReturn ? { returnCoords: loopReturn.coords, returnKind: loopReturn.kind } : {}),
     stops,
   };
 }
@@ -567,8 +631,15 @@ function toScenicRoute(
  * is upfront that you retrace your path. When the start/finish gap is non-trivial we report the
  * distance instead of promising a clean return.
  */
-function shapeClauseFor(shape: RideShape, gapKm: number): string {
-  if (shape === 'loop') return 'Loops back near where it starts.';
+function shapeClauseFor(shape: RideShape, gapKm: number, returnKind?: LoopReturn['kind']): string {
+  if (shape === 'loop') {
+    return returnKind === 'circuit'
+      ? 'Loops back to the start on a different road (shown dashed).'
+      : 'Loops back near where it starts.';
+  }
+  if (returnKind === 'retrace') {
+    return "Out-and-back — loop back the way you came (the dashed return); it's a good road both ways.";
+  }
   if (gapKm >= 1) return `Out-and-back — you'll retrace your path to return. Ends about ${gapKm.toFixed(0)} km from the start.`;
   return "Out-and-back — you'll retrace your path to return.";
 }
