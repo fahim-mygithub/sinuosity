@@ -82,6 +82,60 @@ export function gradeDrama10(m: GradeMetrics, lengthKm: number): number {
   return Math.round(clamp01(raw) * 10 * 10) / 10;
 }
 
+/** A drawable elevation profile: SVG geometry fitted to a `w`×`h` box, plus the measured numbers. */
+export interface ElevationProfile {
+  /** SVG `points` for the elevation line (`"x,y x,y …"`). */
+  line: string;
+  /** SVG `d` for the filled area under the line (closed down to the baseline). */
+  area: string;
+  metrics: GradeMetrics;
+  minM: number;
+  maxM: number;
+  lengthKm: number;
+}
+
+/**
+ * Build a drawable {@link ElevationProfile} from a sampled polyline and its aligned elevations,
+ * fitted to a `w`×`h` SVG box with `pad` inset. X is along-route distance, Y is elevation (inverted
+ * so up is up). Returns `null` for fewer than two usable samples. Pure — the network fetch and the
+ * React rendering live elsewhere, so this is unit-testable.
+ */
+export function buildElevationProfile(
+  pts: LatLng[],
+  elev: number[],
+  w: number,
+  h: number,
+  pad = 4,
+): ElevationProfile | null {
+  const n = Math.min(pts.length, elev.length);
+  if (n < 2) return null;
+  const cum = cumulativeKm(pts.slice(0, n));
+  const lengthKm = cum[n - 1];
+  if (!(lengthKm > 0)) return null;
+
+  let minM = elev[0];
+  let maxM = elev[0];
+  for (let i = 1; i < n; i++) {
+    if (elev[i] < minM) minM = elev[i];
+    if (elev[i] > maxM) maxM = elev[i];
+  }
+  const span = maxM - minM || 1; // flat profile → a centred line, no divide-by-zero
+  const baseline = h - pad;
+  const xy: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const x = pad + (cum[i] / lengthKm) * (w - 2 * pad);
+    const y = baseline - ((elev[i] - minM) / span) * (h - 2 * pad);
+    xy.push([+x.toFixed(2), +y.toFixed(2)]);
+  }
+  const line = xy.map(([x, y]) => `${x},${y}`).join(' ');
+  const area =
+    `M${xy[0][0]},${baseline.toFixed(2)} ` +
+    `L${xy.map(([x, y]) => `${x},${y}`).join(' L')} ` +
+    `L${xy[n - 1][0]},${baseline.toFixed(2)} Z`;
+
+  return { line, area, metrics: gradeMetrics(pts.slice(0, n), elev.slice(0, n)), minM, maxM, lengthKm };
+}
+
 export interface SampleOpts {
   /** Target ground spacing between samples (km). */
   spacingKm?: number;

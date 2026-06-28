@@ -33,12 +33,21 @@ export function useLeafletMap(containerId: string) {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     });
+    // Topographic basemap (contours + hillshade) — makes the elevation/scenery context legible,
+    // which matters most for the grade-drama rides. Keyless OpenTopoMap.
+    const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      maxZoom: 17,
+      subdomains: ['a', 'b', 'c'],
+      attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA) &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    });
 
     const googleRoads = google('m', 'Roads');
     const bases: Record<string, L.TileLayer> = {
       'Google Roads': googleRoads,
       'Google Satellite': google('s', 'Satellite'),
       'Google Hybrid': google('y', 'Hybrid'),
+      'Topo (OpenTopoMap)': topo,
+      'Google Terrain': google('p', 'Terrain'),
       'Dark (CARTO)': carto,
       'OSM Standard': osm,
     };

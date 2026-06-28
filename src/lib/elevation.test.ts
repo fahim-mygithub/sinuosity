@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { gradeMetrics, gradeDrama10, sampleAlong, fetchElevations } from './elevation';
+import { gradeMetrics, gradeDrama10, sampleAlong, fetchElevations, buildElevationProfile } from './elevation';
 import { pathLength, type LatLng } from './geometry';
 
 // Build a roughly straight N–S line with a controllable elevation profile.
@@ -9,6 +9,44 @@ function line(n: number, stepKm = 0.1): LatLng[] {
   for (let i = 0; i < n; i++) out.push([42 + i * dLat, -78]);
   return out;
 }
+
+describe('buildElevationProfile', () => {
+  it('returns null for fewer than two usable samples', () => {
+    expect(buildElevationProfile([], [], 100, 40)).toBeNull();
+    expect(buildElevationProfile(line(1), [10], 100, 40)).toBeNull();
+  });
+
+  it('fits the profile to the box: one point per sample, baseline-anchored area, true metrics', () => {
+    const pts = line(5, 0.2); // 5 samples, ~0.8 km total
+    const elev = [100, 120, 140, 160, 180]; // steady climb, 80 m relief
+    const W = 200, H = 50, PAD = 4;
+    const p = buildElevationProfile(pts, elev, W, H, PAD)!;
+    expect(p).not.toBeNull();
+    expect(p.line.split(' ')).toHaveLength(5); // one x,y per sample
+    expect(p.minM).toBe(100);
+    expect(p.maxM).toBe(180);
+    expect(p.metrics.reliefM).toBe(80);
+    expect(p.metrics.totalAscentM).toBe(80);
+    // The highest point sits at the top inset; the lowest at the baseline.
+    const ys = p.line.split(' ').map((s) => +s.split(',')[1]);
+    expect(Math.min(...ys)).toBeCloseTo(PAD, 1); // peak (180 m) → top
+    expect(Math.max(...ys)).toBeCloseTo(H - PAD, 1); // valley (100 m) → baseline
+    // The filled area is a closed path that starts on the baseline (y = H − PAD) and ends with Z.
+    expect(p.area.startsWith('M')).toBe(true);
+    const firstY = +p.area.split(' ')[0].split(',')[1];
+    expect(firstY).toBeCloseTo(H - PAD, 1);
+    expect(p.area.endsWith('Z')).toBe(true);
+  });
+
+  it('handles a flat profile without dividing by zero', () => {
+    const p = buildElevationProfile(line(4, 0.25), [200, 200, 200, 200], 120, 40)!;
+    expect(p).not.toBeNull();
+    expect(p.minM).toBe(200);
+    expect(p.maxM).toBe(200);
+    expect(p.metrics.reliefM).toBe(0);
+    expect(p.line.split(' ').every((s) => Number.isFinite(+s.split(',')[1]))).toBe(true);
+  });
+});
 
 describe('gradeMetrics', () => {
   it('measures relief, total ascent and max grade from a profile', () => {

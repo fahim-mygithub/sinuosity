@@ -7,6 +7,7 @@ import {
   streetViewDeepLink,
 } from '../lib/scenicImagery';
 import { KIND_ICON, RUBRIC_LABELS } from '../lib/scenicMeta';
+import { ElevationProfile } from './ElevationProfile';
 import { distanceValue } from '../lib/units';
 import type { Units } from '../lib/preferences';
 import type { LatLng } from '../lib/geometry';
@@ -208,6 +209,9 @@ export function ScenicRouteReview({
             <RubricMeters rubric={route.rubric} />
           </div>
         </div>
+
+        {/* Elevation profile (terrain fetched on open; hides itself if unavailable) */}
+        <ElevationProfile coords={route.coords} units={units} />
 
         {/* Stops */}
         <h2 className="mt-14 text-xs uppercase tracking-[0.2em] text-emerald-400 after:block after:h-px after:bg-white/10 after:mt-3">

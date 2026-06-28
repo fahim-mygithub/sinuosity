@@ -102,6 +102,8 @@ export default function App() {
   const [scanRadius, setScanRadius] = useState(12);
   // When on, the builder prefers round-trip loops (returns near the start) over there-and-backs.
   const [loopMode, setLoopMode] = useState(false);
+  // When on, rides that use a KNOWN-unpaved (gravel/dirt) leg are filtered out before stitching.
+  const [pavedOnly, setPavedOnly] = useState(false);
   // Multi-criteria scan: the cached area corpus + the rides built from it under the current bias.
   const [areaScan, setAreaScan] = useState<AreaScan | null>(null);
   const [scanRides, setScanRides] = useState<ScenicRoute[]>([]);
@@ -332,8 +334,12 @@ export default function App() {
 
   // Re-rank + redraw from the cached area corpus under a bias — no network. Used both right after a
   // scan and whenever the rider nudges a bias slider, so weighting changes feel instant.
-  const rebuildRides = useCallback((scan: AreaScan, b: BiasWeights, loops: boolean): ScenicRoute[] => {
-    const rides = buildRides(scan.roads, scan.catalog, { bias: b, areaLabel: scanCenter.label, preferLoops: loops, connectors: scan.corpus });
+  const rebuildRides = useCallback((scan: AreaScan, b: BiasWeights, loops: boolean, paved: boolean): ScenicRoute[] => {
+    // Paved-only: drop legs OSM tags as gravel/dirt (unknown surface stays — most backroads are
+    // paved-but-untagged). Filters both the ride candidates and the connector roads used for returns.
+    const roads = paved ? scan.roads.filter((r) => r.paved !== false) : scan.roads;
+    const connectors = paved ? scan.corpus.filter((r) => r.paved !== false) : scan.corpus;
+    const rides = buildRides(roads, scan.catalog, { bias: b, areaLabel: scanCenter.label, preferLoops: loops, connectors });
     setScanRides(rides);
     if (map) {
       clearLayers();
@@ -469,7 +475,7 @@ export default function App() {
     try {
       const scan = await scanArea(scanCenterLatLng, scanRadius, controller.signal);
       setAreaScan(scan);
-      const rides = rebuildRides(scan, bias, loopMode);
+      const rides = rebuildRides(scan, bias, loopMode, pavedOnly);
       if (rides.length) {
         const b = L.latLngBounds(rides.flatMap((r) => routeBoundsCoords(r).map((c) => L.latLng(c[0], c[1]))));
         if (b.isValid()) map.fitBounds(b, fitOptions());
@@ -506,9 +512,9 @@ export default function App() {
   const firstBias = useRef(true);
   useEffect(() => {
     if (firstBias.current) { firstBias.current = false; return; }
-    if (tab === 'scanner' && areaScan) rebuildRides(areaScan, bias, loopMode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps — intentionally keyed on bias + loopMode
-  }, [bias, loopMode]);
+    if (tab === 'scanner' && areaScan) rebuildRides(areaScan, bias, loopMode, pavedOnly);
+    // eslint-disable-next-line react-hooks/exhaustive-deps — intentionally keyed on bias + loop + paved
+  }, [bias, loopMode, pavedOnly]);
 
   const applyPreset = (p: BiasPreset) => { setPresetId(p.id); setBias(p.weights); };
   const setWeight = (k: keyof BiasWeights, v: number) => {
@@ -713,6 +719,23 @@ export default function App() {
                 </span>
                 <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${loopMode ? 'bg-emerald-500' : 'bg-slate-700'}`} aria-hidden>
                   <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${loopMode ? 'translate-x-4' : ''}`} />
+                </span>
+              </button>
+
+              {/* Paved-only — drop rides that use a known gravel/dirt leg. Re-ranks instantly. */}
+              <button
+                type="button"
+                onClick={() => setPavedOnly((m) => !m)}
+                aria-pressed={pavedOnly}
+                className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${pavedOnly ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-slate-950/50 border-slate-800 hover:border-emerald-500/30'}`}
+              >
+                <span className="text-lg shrink-0" aria-hidden>🛣️</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12px] font-bold text-slate-100">Paved roads only</span>
+                  <span className="block text-[10px] text-slate-400 leading-snug">Hide rides that use a road tagged gravel or dirt. Untagged backroads still count.</span>
+                </span>
+                <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${pavedOnly ? 'bg-emerald-500' : 'bg-slate-700'}`} aria-hidden>
+                  <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${pavedOnly ? 'translate-x-4' : ''}`} />
                 </span>
               </button>
 
