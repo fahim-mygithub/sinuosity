@@ -116,12 +116,49 @@ shipped data is pinned by `src/lib/curatedRoutes.test.ts`. Edit the seed and re-
 — don't hand-edit the generated file. (Street View snapping reads `VITE_GOOGLE_MAPS_KEY` from
 `.env.local`; without it the build still runs and stops keep their authored coordinates.)
 
+## The scan tile corpus (why scans are fast)
+
+The Scan tab used to run two live Overpass queries per scan from the browser. Measured against
+`overpass-api.de` at the slider's max 30 km radius: **24.4 s** for roads and **17.0 s** for the
+scenic catalog — and that latency is near-constant *dispatch overhead*, not payload-driven (1.9 MB
+took 24 s; 55 MB took 35 s). It is queueing on undersized public infrastructure, so no mirror
+change or query slimming fixes it.
+
+Instead, `npm run tiles:build` (`scripts/build-tiles.mjs`) crawls a 0.5° grid over NY and writes
+`public/tiles/t_{latIdx}_{lonIdx}.json` — the road corpus with **baked** curvature and rubric, the
+categorized scenic tells, and the POIs. A 30 km scan fetches ~6 static tiles (~180 KB gzipped each)
+and does no measurement at all. Outside NY, or if any tile fails, `src/lib/areaSource.ts` falls
+back to the original Overpass path, so the app is never worse off than before.
+
+Two things to know before touching it:
+
+- **Ways are never clipped at tile edges.** Each is assigned whole to the tile holding its
+  midpoint, because a split polyline corrupts `sinuosityScore`. This is also why standard vector
+  tiles are unusable here: they simplify geometry per zoom, and full vertex detail exists only at
+  z14+. Consequently the scan-time margin (`MARGIN_KM`) must exceed **half the longest way**; the
+  builder asserts no way exceeds `2 × MARGIN_KM` so a violation fails the build instead of quietly
+  dropping roads from scans.
+- **The builder duplicates three modules** the app also uses (`tile-codec`, `feature-catalog`,
+  `scenery-tells`) because Node cannot import the TS. Each has a **parity test** — a desync would
+  ship scans whose scores depend on which source served them, with both numbers looking plausible.
+  `scripts/lib/scenery-tells.mjs` additionally carries a grid index for build speed (171 ms → 33 ms
+  per road); it is an *exact* index, not an approximation, and the tests assert it against brute
+  force bit for bit.
+
+`.github/workflows/build-tiles.yml` rebuilds the corpus on manual dispatch, and monthly refreshes
+the 40 stalest tiles (`--refresh-oldest`). A plain re-run only fills in what's missing, so a
+rate-limited crawl resumes rather than restarting. Full design:
+`docs/plans/2026-07-31-precomputed-tiles-design.md`.
+
 ## Architecture
 
 ```
 src/
   lib/
     geometry.ts        haversine, cos-lat sinuosity, curvature10, cleanCoords/spur removal (tested)
+    tileCodec.ts       tile wire format: quantized delta geometry, grid math, scan margin (tested)
+    tileSource.ts      decodes the precomputed corpus into an AreaScan (tested)
+    areaSource.ts      picks tiles vs live Overpass, and falls back on any tile failure (tested)
     scenicScore.ts     motorcycle-weighted composite score from the rubric (tested)
     mapsUrl.ts         Google/Apple Maps URL builders, waypoint cap, NaN guards (tested)
     geocode.ts         keyless Nominatim forward/reverse geocoding for the location search (tested)
