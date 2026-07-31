@@ -43,8 +43,33 @@ Rejected alternatives:
 
 ## Coverage
 
-NY State: `40.5,-79.8 → 45.0,-71.8` at 0.5°, ~144 tiles. Outside coverage, the existing
-Overpass path runs unchanged.
+Grid rectangle `40.5,-79.8 → 45.0,-71.8` at 0.5° is 170 cells, then **clipped to a coarse New York
+outline — 82 tiles**. Outside coverage the existing Overpass path runs unchanged.
+
+Two clipping decisions, both driven by measurement:
+
+- **Out-of-state cells are skipped.** NY is irregular inside that box, so ~half the rectangle is
+  Pennsylvania, New Jersey and New England — and those were the *most* expensive tiles: dense
+  Philadelphia / northern-NJ cells measured 2.3–3.4 MB raw (573–980 KB gzipped) against 178 KB for
+  a rural WNY tile, while holding nothing this app looks for.
+- **The southern edge stops near 41.25**, not at the real state line. NYC, Staten Island and Long
+  Island are genuinely New York but have no twisty backroads, and the Staten Island tile alone
+  measured 10,247 ways / 7.7 MB raw / 2.1 MB gzipped. A few such tiles would dominate the corpus to
+  serve scans that return nothing worth riding.
+
+Neither is a capability loss: scans in those areas still work through the Overpass fallback.
+
+### Coverage is published, not inferred
+
+The builder writes `public/tiles/manifest.json` listing every tile that exists. The client requires
+every tile overlapping the scanned **radius** to be present and otherwise falls back; margin tiles
+are best-effort.
+
+This is load-bearing. An earlier version tested the grid **rectangle** for coverage, so a scan
+centred in Pennsylvania would load one stray NY tile and return a scan silently missing most of its
+area — a plausible-looking result with whole sectors absent. Publishing the manifest also avoids
+duplicating the state outline into the browser, where a drifted copy would reintroduce exactly that
+bug.
 
 ## Grid and way assignment
 
@@ -101,8 +126,38 @@ TDD throughout: codec roundtrip, tile index math, tile-selection-for-radius, cro
 and dedupe, fallback on 404/network error, and a shape-equivalence test asserting a
 tile-sourced `AreaScan` is interchangeable with an Overpass-sourced one.
 
-## Open risk
+## Build performance
 
-The ~3-8 MB NY estimate is extrapolated from the 30 km payloads, not measured. Step 1 of
-implementation builds a single tile and measures real gzipped size as a go/no-go before
-crawling 144 of them.
+The rubric pass, not Overpass, was the bottleneck. Profiling one dense tile: roads query 4.4 s,
+tells query 9.7 s, categorize ~0 s — and the rubric pass **171 ms per road × 1,316 roads = 225 s**,
+which across the grid is 5–10 h, over the CI ceiling.
+
+`corridorSignal` and `weightedSignal` need only the *nearest* (or strongest-weighted) tell per route
+sample point — neither sums over all tells. So a spatial index is **exact**, not an approximation.
+`scripts/lib/scenery-tells.mjs` now carries a uniform grid with expanding-ring search, cached per
+tell array (built once per tile, not once per road), plus a bbox pre-filter on polygon containment.
+That is 171 ms → **33 ms** per road.
+
+Two traps found while building it, both caught by the exactness test rather than by inspection:
+
+- Terminating the ring walk at a guessed radius made the search *inexact* — a route far from all
+  data returned "nothing found" where brute force reports a real, tiny distance. Termination now
+  uses the grid's occupied extent, which is both exact and guaranteed to finish.
+- That fix then made a far-from-data query crawl outward one empty ring at a time (~96 s for a
+  single test route). The search now jumps straight to the first ring that can intersect occupied
+  space.
+
+## Resolved risk
+
+The original 3–8 MB estimate for NY was extrapolated from the 30 km payloads, not measured — it was
+wrong by ~5×. The spike measured **178 KB gzipped** for a rural WNY tile (568 roads, 333 with a
+baked rubric), after fixing an encoding bug the measurement itself exposed: weighted point sets were
+being written one `encodePath([pt])` at a time, emitting an absolute coordinate pair per point and
+defeating the delta scheme. 21.5 k water points cost 485 KB that way against 44 KB for 12.7 k
+sequence-encoded green points; storing them as one delta sequence plus a parallel weight array took
+the tile from 245 KB to 178 KB.
+
+Corpus size is now bounded by the 82-tile clip rather than by a per-tile estimate. Tiles are
+committed to the repo as raw `.json` (Pages gzips text on the fly); if repo weight becomes
+annoying, the follow-up is to publish them as a GitHub Release asset that `deploy.yml` unpacks,
+which keeps them out of git history entirely.

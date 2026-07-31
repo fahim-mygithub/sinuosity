@@ -14,7 +14,7 @@ const SCALE = 1 / QUANT;
 export const TILE_DEG = 0.5;
 
 /** Scan-time tile margin (km). See tileCodec.ts — build-tiles.mjs asserts no way exceeds 2x this. */
-export const MARGIN_KM = 12;
+export const MARGIN_KM = 25;
 
 /** Quantize + delta-encode a polyline to `[lat0, lon0, dLat1, dLon1, ...]`. */
 export function encodePath(coords) {

@@ -10,7 +10,7 @@ import { haversine } from './geometry';
 import type { ScannedRoad, ScoredRoad, ScenicRubric } from '../data/types';
 import type { ScenicPOI } from './features';
 import type { RubricTells } from './sceneryTells';
-import type { AreaScan } from './overpass';
+import { enrichElevation, type AreaScan } from './overpass';
 import { decodePath, tileKey, tilesForBounds, tilesForRadius, TILE_DEG } from './tileCodec';
 
 /**
@@ -211,6 +211,12 @@ export async function scanAreaFromTiles(
     .filter((r) => touches(r.coords))
     .sort((a, b) => b.curveDensity - a.curveDensity)
     .slice(0, CANDIDATE_CAP);
+
+  // Curvature, scenery, greenery, water and notability are baked; gradeDrama is NOT, so it is
+  // measured here exactly as the Overpass path does. Skipping it would leave tile-sourced scans
+  // silently missing a whole rubric dimension that Overpass-sourced scans have. Never throws, and
+  // degrades to "no elevation signal" if the terrain lookup is unavailable.
+  await enrichElevation(roads, signal);
 
   return {
     roads,

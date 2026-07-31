@@ -342,8 +342,13 @@ const ELEV_POINT_BUDGET = 700;
  * Measure `gradeDrama` for the top candidate roads from a real terrain profile (Open-Meteo), in a
  * single batched, parallel lookup. Mutates each enriched road's `rubric.gradeDrama` in place. Never
  * throws and silently no-ops when the lookup is unavailable (graceful degradation).
+ *
+ * Exported because the TILE path needs it too. gradeDrama is not baked into tiles, so without this
+ * a tile-sourced scan would carry no elevation signal at all while an Overpass-sourced scan of the
+ * same area did — the same road ranking differently depending on which source served it, with both
+ * results looking entirely plausible.
  */
-async function enrichElevation(roads: ScoredRoad[], signal?: AbortSignal): Promise<void> {
+export async function enrichElevation(roads: ScoredRoad[], signal?: AbortSignal): Promise<void> {
   const targets = roads.slice(0, ELEV_TOP_K);
   const spans: { road: ScoredRoad; start: number; pts: LatLng[] }[] = [];
   const all: LatLng[] = [];

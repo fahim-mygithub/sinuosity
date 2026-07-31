@@ -119,6 +119,52 @@ describe('scanAreaFromTiles', () => {
     }
   });
 
+  it('measures gradeDrama, which is not baked into tiles', async () => {
+    // Without this the tile path silently drops a whole rubric dimension the Overpass path has, so
+    // the same road would rank differently depending on which source served the scan.
+    const real = existsSync(REAL_TILE_PATH) ? JSON.parse(readFileSync(REAL_TILE_PATH, 'utf8')) : null;
+    if (!real) return;
+    let elevationHit = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes('manifest.json')) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ v: 1, tileDeg: 0.5, marginKm: 25, tiles: tilesForBounds(WNY[0], WNY[1], 30).map(([a, b]) => tileKey(a, b)) }),
+        } as unknown as Response;
+      }
+      if (u.includes('open-meteo')) {
+        elevationHit = true;
+        const n = (new URL(u).searchParams.get('latitude') ?? '').split(',').length;
+        return { ok: true, status: 200, json: async () => ({ elevation: Array.from({ length: n }, (_, i) => 300 + i * 7) }) } as unknown as Response;
+      }
+      return { ok: true, status: 200, json: async () => real } as unknown as Response;
+    }));
+
+    const scan = await scanAreaFromTiles(WNY, 30);
+    expect(elevationHit).toBe(true);
+    expect(scan.roads.some((r) => typeof r.rubric.gradeDrama === 'number')).toBe(true);
+  });
+
+  it('still returns a scan when the elevation lookup fails', async () => {
+    const real = existsSync(REAL_TILE_PATH) ? JSON.parse(readFileSync(REAL_TILE_PATH, 'utf8')) : null;
+    if (!real) return;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes('manifest.json')) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ v: 1, tileDeg: 0.5, marginKm: 25, tiles: tilesForBounds(WNY[0], WNY[1], 30).map(([a, b]) => tileKey(a, b)) }),
+        } as unknown as Response;
+      }
+      if (u.includes('open-meteo')) return { ok: false, status: 503, json: async () => ({}) } as unknown as Response;
+      return { ok: true, status: 200, json: async () => real } as unknown as Response;
+    }));
+
+    const scan = await scanAreaFromTiles(WNY, 30);
+    expect(scan.roads.length).toBeGreaterThan(0); // degrades, does not fail
+  });
+
   it('caps candidates AFTER merging tiles, and only keeps roads touching the radius', async () => {
     if (!stubTiles()) return; // corpus not built in this checkout
     const wide = await scanAreaFromTiles(WNY, 30);

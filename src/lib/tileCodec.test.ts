@@ -93,9 +93,12 @@ describe('tilesForBounds', () => {
     expect(tilesForBounds(42.70, -78.25, 30).length).toBeGreaterThan(tilesForRadius(42.70, -78.25, 30).length);
   });
 
-  it('stays economical — a max-radius scan loads well under twenty tiles', () => {
+  it('stays economical — a max-radius scan loads a bounded handful of tiles', () => {
     // Regression guard: padding by a whole tile instead of MARGIN_KM made this 20 for no gain.
-    expect(tilesForBounds(42.6, -78.4, 30).length).toBeLessThanOrEqual(12);
+    // The bound tracks MARGIN_KM, which grew to 25 once a 25.9km way turned up mid-crawl.
+    for (const [lat, lon] of [[42.6, -78.4], [42.75, -78.25], [44.2, -74.1], [41.4, -74.2]]) {
+      expect(tilesForBounds(lat, lon, 30).length).toBeLessThanOrEqual(16);
+    }
   });
 
   it('returns unique tiles', () => {

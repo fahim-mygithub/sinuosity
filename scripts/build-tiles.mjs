@@ -299,24 +299,42 @@ async function buildTile(latIdx, lonIdx, opts) {
     if (back.length * 2 !== roads[0].geom.length) throw new Error(`${key}: geometry round-trip length mismatch`);
   }
 
-  // Margin assertion. Ways are owned by the tile holding their midpoint, so the scan-time margin
-  // must exceed HALF the longest way or roads inside the radius silently vanish from results. Fail
-  // the build rather than ship a corpus that quietly under-reports.
+  // Longest way in this tile, reported (not thrown) so the crawl can measure the whole grid in one
+  // pass. Ways are owned by the tile holding their midpoint, so the scan-time margin must exceed
+  // HALF the longest way or roads inside the radius silently vanish from results. Throwing here
+  // would surface the maximum one tile at a time, forcing a raise-and-restart cycle per offender;
+  // the tiles themselves are valid regardless, since MARGIN_KM only affects which tiles a scan
+  // loads. The check is enforced once, over the whole grid, at the end of the run.
   const longest = roads.reduce((mx, r) => Math.max(mx, pathLengthKm(decodePath(r.geom))), 0);
-  if (longest > 2 * MARGIN_KM) {
-    throw new Error(
-      `${key}: way of ${longest.toFixed(1)}km exceeds 2x MARGIN_KM (${2 * MARGIN_KM}km). ` +
-      `Raise MARGIN_KM in tileCodec.ts AND tile-codec.mjs, or scans will miss this road.`,
-    );
-  }
 
   const json = JSON.stringify(tile);
   const gz = gzipSync(json).length;
   if (!opts.dryRun) {
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(outPath, json);
+    writeManifest(); // keep a partial crawl usable — see writeManifest()
   }
-  return { key, roads: roads.length, baked, pois: tile.pois.meta.length, bytes: json.length, gz };
+  return { key, roads: roads.length, baked, pois: tile.pois.meta.length, bytes: json.length, gz, longest };
+}
+
+/**
+ * Publish the manifest from what is actually on disk.
+ *
+ * Written after EVERY tile, not just at the end of a run: the client refuses to serve a scan unless
+ * every tile overlapping its radius is listed, so a manifest that only appears on completion makes
+ * a partial or interrupted crawl useless rather than partially useful. Cheap enough to do per tile
+ * (a few dozen short strings).
+ */
+function writeManifest() {
+  const tiles = readdirSync(OUT_DIR)
+    .filter((f) => f.endsWith('.json') && f !== 'manifest.json')
+    .map((f) => f.replace(/\.json$/, ''))
+    .sort();
+  writeFileSync(
+    `${OUT_DIR}manifest.json`,
+    JSON.stringify({ v: 1, tileDeg: TILE_DEG, marginKm: MARGIN_KM, tiles }),
+  );
+  return tiles.length;
 }
 
 /**
@@ -388,17 +406,13 @@ function stalestTiles(cells, n) {
       console.log(`  pruned ${f}`);
     }
     console.log(`pruned ${removed} tile(s), freed ${(freed / 1024 / 1024).toFixed(1)} MB`);
-    const left = readdirSync(OUT_DIR)
-      .filter((f) => f.endsWith('.json') && f !== 'manifest.json')
-      .map((f) => f.replace(/\.json$/, ''))
-      .sort();
-    writeFileSync(`${OUT_DIR}manifest.json`, JSON.stringify({ v: 1, tileDeg: TILE_DEG, marginKm: MARGIN_KM, tiles: left }));
-    console.log(`manifest: ${left.length} tile(s)`);
+    console.log(`manifest: ${writeManifest()} tile(s)`);
     return;
   }
 
   console.log(`Building ${cells.length} tile(s) at ${TILE_DEG}deg${opts.dryRun ? ' (dry run)' : ''}`);
   let totalGz = 0, built = 0, skipped = 0, failed = 0;
+  let longestWayKm = 0, longestWayTile = null;
   const t0 = Date.now();
 
   for (const [a, b] of cells) {
@@ -407,33 +421,36 @@ function stalestTiles(cells, n) {
     if (r.failed) { failed++; continue; }
     built++;
     totalGz += r.gz;
+    if (r.longest > longestWayKm) { longestWayKm = r.longest; longestWayTile = r.key; }
     console.log(
       `  ${r.key}  roads ${String(r.roads).padStart(5)}  rubric ${String(r.baked).padStart(5)}` +
       `  pois ${String(r.pois).padStart(4)}  ${(r.bytes / 1024).toFixed(0)}KB -> ${(r.gz / 1024).toFixed(0)}KB gz`,
     );
   }
 
-  // The manifest is how the CLIENT knows its own coverage. Coverage is a state outline, not the
-  // grid rectangle, so without it the browser would have to carry a duplicate of NY_OUTLINE — and a
-  // drifted copy means scans near the border silently return a partial circle. Written from what is
-  // actually on disk (not from `cells`) so a partial crawl publishes only what it really produced.
-  if (!opts.dryRun && existsSync(OUT_DIR)) {
-    const tiles = readdirSync(OUT_DIR)
-      .filter((f) => f.endsWith('.json') && f !== 'manifest.json')
-      .map((f) => f.replace(/\.json$/, ''))
-      .sort();
-    writeFileSync(
-      `${OUT_DIR}manifest.json`,
-      JSON.stringify({ v: 1, tileDeg: TILE_DEG, marginKm: MARGIN_KM, tiles }),
-    );
-    console.log(`manifest: ${tiles.length} tile(s)`);
-  }
+  if (!opts.dryRun && existsSync(OUT_DIR)) console.log(`manifest: ${writeManifest()} tile(s)`);
 
   const mins = ((Date.now() - t0) / 60000).toFixed(1);
   console.log(`\nbuilt ${built}, skipped ${skipped}, failed ${failed} in ${mins} min`);
   console.log(`total ${(totalGz / 1024 / 1024).toFixed(2)} MB gzipped`);
   if (built && cells.length > built) {
     console.log(`projected full grid: ~${((totalGz / built) * cells.length / 1024 / 1024).toFixed(1)} MB gzipped`);
+  }
+
+  // Enforced once, over everything this run produced. Only meaningful on a full crawl — a resumed
+  // run skips existing tiles, so it sees only the subset it rebuilt.
+  if (built) {
+    console.log(`longest way: ${longestWayKm.toFixed(1)}km (${longestWayTile}), MARGIN_KM=${MARGIN_KM} covers ${2 * MARGIN_KM}km`);
+    if (longestWayKm > 2 * MARGIN_KM) {
+      console.error(
+        `\nERROR: ${longestWayTile} holds a ${longestWayKm.toFixed(1)}km way, over 2x MARGIN_KM ` +
+        `(${2 * MARGIN_KM}km). Ways are owned by the tile containing their midpoint, so scans ` +
+        `within ${MARGIN_KM}km of that road will silently miss it. Raise MARGIN_KM to at least ` +
+        `${Math.ceil(longestWayKm / 2)} in BOTH src/lib/tileCodec.ts and scripts/lib/tile-codec.mjs ` +
+        `(the parity test enforces they match). Tiles themselves are valid and need no rebuild.`,
+      );
+      process.exitCode = 1;
+    }
   }
   if (failed) process.exitCode = 1;
 })();

@@ -87,15 +87,19 @@ export function tileBounds(latIdx: number, lonIdx: number): [number, number, num
  * a neighbouring tile. The margin must therefore exceed HALF the longest way, or such roads
  * silently vanish from the scan — the worst kind of bug, because the result still looks plausible.
  *
- * Measured on the WNY spike tile (568 ways): longest 14.4km, p99 10.0km, median 1.6km. Half the
- * longest is ~7.2km, so 12km covers ways up to 24km with real headroom. scripts/build-tiles.mjs
- * ASSERTS no way exceeds 2x this, so a longer way anywhere in the grid fails the build loudly
- * instead of quietly degrading scans.
+ * Sized from measurement, then corrected by one. The WNY spike tile (568 ways) had a longest way of
+ * 14.4km (p99 10.0km, median 1.6km), suggesting 12km was ample — but crawling the rest of the state
+ * turned up a 25.9km way in the Southern Tier, which the build assertion caught. 25 covers ways up
+ * to 50km. scripts/build-tiles.mjs ASSERTS no way exceeds 2x this, so if a longer one ever appears
+ * the build fails loudly instead of quietly degrading scans; that assertion is the reason this
+ * number is trustworthy rather than a guess that happened to hold on the tile I sampled.
+ *
+ * Raising it does not invalidate built tiles — it only affects which tiles a scan loads.
  *
  * (An earlier version padded by a whole tile. At 0.5deg that is 40-55km — it made a 30km scan load
- * up to 20 tiles instead of 6, for no correctness gain.)
+ * up to 20 tiles for no correctness gain.)
  */
-export const MARGIN_KM = 12;
+export const MARGIN_KM = 25;
 
 /** Tiles intersecting a box of `reachKm` around the point. */
 function tilesWithin(lat: number, lon: number, reachKm: number): [number, number][] {
