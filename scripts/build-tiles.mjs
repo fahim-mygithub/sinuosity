@@ -28,8 +28,9 @@
 //   node scripts/build-tiles.mjs --force               # rebuild every tile
 //   node scripts/build-tiles.mjs --refresh-oldest 40   # re-crawl the 40 stalest tiles
 //   node scripts/build-tiles.mjs --dry-run             # measure sizes, write nothing
+//   node scripts/build-tiles.mjs --prune               # delete tiles outside NY, crawl nothing
 
-import { writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { writeFileSync, existsSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { encodePath, decodePath, tileIndex, tileKey, tileBounds, TILE_DEG, MARGIN_KM } from './lib/tile-codec.mjs';
@@ -39,8 +40,66 @@ import { sinuosityScore, flowCurvature, pathLengthKm, haversineM } from './lib/s
 
 const OUT_DIR = fileURLToPath(new URL('../public/tiles/', import.meta.url));
 
-/** NY State, per the design doc. Outside this the app falls back to live Overpass. */
+/** Bounding rectangle of the covered region. Tiles are then clipped to {@link NY_OUTLINE}. */
 const GRID = { s: 40.5, w: -79.8, n: 45.0, e: -71.8 };
+
+/**
+ * The region actually precomputed: New York State, MINUS the New York City metro and Long Island.
+ *
+ * Two separate reasons, both about size:
+ *
+ * 1. NY is an irregular shape inside a 4.5deg x 8deg box, so the raw grid rectangle is roughly half
+ *    out-of-state. The parts it wasted effort on were the worst possible ones — dense Philadelphia
+ *    and northern-NJ tiles measured 2.3-3.4MB raw (573-980KB gzipped) against 178KB for a rural WNY
+ *    tile — while containing nothing this app looks for.
+ *
+ * 2. The southern boundary stops around 41.25 rather than following the real state line. NYC, Staten
+ *    Island and Long Island are genuinely New York, but they hold no twisty backroads and are by far
+ *    the most expensive tiles to carry: the Staten Island tile measured 10,247 ways, 7.7MB raw and
+ *    2.1MB gzipped. A handful of them would dominate the committed corpus in order to serve scans
+ *    that return nothing anyone wants to ride.
+ *
+ * Neither is a capability loss — scans in those areas still work, they just take the Overpass
+ * fallback like anywhere else outside the corpus. Coverage is published in manifest.json so the
+ * client never has to guess where it ends.
+ *
+ * Deliberately coarse and inclusive along the rest: a tile is kept if it touches the outline at all,
+ * so border tiles carry some PA/VT/Ontario collateral. That matches discover-roads.mjs, which
+ * accepts near-border roads rather than risk clipping real NY ones.
+ */
+const NY_OUTLINE = [
+  [42.00, -79.76], [42.52, -79.76], [42.87, -78.91], [43.07, -79.06], [43.37, -78.00],
+  [43.35, -77.00], [43.28, -76.50], [43.80, -76.20], [44.13, -76.37], [44.60, -75.40],
+  [44.99, -74.72], [45.01, -73.35], [43.60, -73.43], [42.75, -73.27], [42.05, -73.49],
+  [41.30, -73.48], [41.25, -74.30], [41.35, -74.70], [41.60, -75.05], [42.00, -75.36],
+];
+
+/** Ray-cast point-in-polygon (same method as scenery-tells pointInRing). */
+function inPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i];
+    const [yj, xj] = poly[j];
+    if ((yi > pt[0]) !== (yj > pt[0]) && pt[1] < ((xj - xi) * (pt[0] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Does this tile touch New York? Samples the tile's interior AND checks whether any outline vertex
+ * falls inside it — the second test is what catches narrow protrusions (the Niagara frontier, the
+ * eastern tip of Long Island) that a coarse interior sample can step straight over.
+ */
+function tileTouchesNY(latIdx, lonIdx) {
+  const [s, w, n, e] = tileBounds(latIdx, lonIdx);
+  const STEPS = 6;
+  for (let a = 0; a <= STEPS; a++) {
+    for (let b = 0; b <= STEPS; b++) {
+      if (inPolygon([s + ((n - s) * a) / STEPS, w + ((e - w) * b) / STEPS], NY_OUTLINE)) return true;
+    }
+  }
+  return NY_OUTLINE.some(([la, lo]) => la >= s && la < n && lo >= w && lo < e);
+}
 
 /** Degrees of pad around a tile when fetching tells. TAU.peak is 1500m; 0.02deg is ~2.2km. */
 const PAD_DEG = 0.02;
@@ -291,7 +350,14 @@ function stalestTiles(cells, n) {
   } else {
     const [sLat, sLon] = tileIndex(GRID.s, GRID.w);
     const [nLat, nLon] = tileIndex(GRID.n, GRID.e);
-    for (let a = sLat; a <= nLat; a++) for (let b = sLon; b <= nLon; b++) cells.push([a, b]);
+    let inBox = 0;
+    for (let a = sLat; a <= nLat; a++) {
+      for (let b = sLon; b <= nLon; b++) {
+        inBox++;
+        if (tileTouchesNY(a, b)) cells.push([a, b]);
+      }
+    }
+    console.log(`grid: ${cells.length} tiles touch NY (${inBox - cells.length} of ${inBox} skipped as out-of-state)`);
   }
 
   if (refreshOldest) {
@@ -301,6 +367,34 @@ function stalestTiles(cells, n) {
     cells = [...missing, ...stale];
     opts.force = true;
     console.log(`refresh mode: ${missing.length} missing + ${stale.length} stalest`);
+  }
+
+  // Drop any tile the current outline no longer selects. Run after narrowing NY_OUTLINE (or the
+  // grid) so the committed corpus does not keep serving — and paying repo weight for — regions the
+  // build would no longer produce.
+  if (has('--prune')) {
+    const wanted = new Set(cells.map(([a, b]) => tileKey(a, b)));
+    // manifest.json lives in this directory too and is regenerated below — never prune it as if it
+    // were a stale tile.
+    const files = existsSync(OUT_DIR)
+      ? readdirSync(OUT_DIR).filter((f) => f.endsWith('.json') && f !== 'manifest.json')
+      : [];
+    let removed = 0, freed = 0;
+    for (const f of files) {
+      if (wanted.has(f.replace(/\.json$/, ''))) continue;
+      freed += statSync(`${OUT_DIR}${f}`).size;
+      rmSync(`${OUT_DIR}${f}`);
+      removed++;
+      console.log(`  pruned ${f}`);
+    }
+    console.log(`pruned ${removed} tile(s), freed ${(freed / 1024 / 1024).toFixed(1)} MB`);
+    const left = readdirSync(OUT_DIR)
+      .filter((f) => f.endsWith('.json') && f !== 'manifest.json')
+      .map((f) => f.replace(/\.json$/, ''))
+      .sort();
+    writeFileSync(`${OUT_DIR}manifest.json`, JSON.stringify({ v: 1, tileDeg: TILE_DEG, marginKm: MARGIN_KM, tiles: left }));
+    console.log(`manifest: ${left.length} tile(s)`);
+    return;
   }
 
   console.log(`Building ${cells.length} tile(s) at ${TILE_DEG}deg${opts.dryRun ? ' (dry run)' : ''}`);
@@ -317,6 +411,22 @@ function stalestTiles(cells, n) {
       `  ${r.key}  roads ${String(r.roads).padStart(5)}  rubric ${String(r.baked).padStart(5)}` +
       `  pois ${String(r.pois).padStart(4)}  ${(r.bytes / 1024).toFixed(0)}KB -> ${(r.gz / 1024).toFixed(0)}KB gz`,
     );
+  }
+
+  // The manifest is how the CLIENT knows its own coverage. Coverage is a state outline, not the
+  // grid rectangle, so without it the browser would have to carry a duplicate of NY_OUTLINE — and a
+  // drifted copy means scans near the border silently return a partial circle. Written from what is
+  // actually on disk (not from `cells`) so a partial crawl publishes only what it really produced.
+  if (!opts.dryRun && existsSync(OUT_DIR)) {
+    const tiles = readdirSync(OUT_DIR)
+      .filter((f) => f.endsWith('.json') && f !== 'manifest.json')
+      .map((f) => f.replace(/\.json$/, ''))
+      .sort();
+    writeFileSync(
+      `${OUT_DIR}manifest.json`,
+      JSON.stringify({ v: 1, tileDeg: TILE_DEG, marginKm: MARGIN_KM, tiles }),
+    );
+    console.log(`manifest: ${tiles.length} tile(s)`);
   }
 
   const mins = ((Date.now() - t0) / 60000).toFixed(1);

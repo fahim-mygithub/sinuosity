@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encodePath, decodePath, QUANT, tileIndex, tileKey, tilesForBounds, TILE_DEG, MARGIN_KM } from './tileCodec';
+import { encodePath, decodePath, QUANT, tileIndex, tileKey, tilesForBounds, tilesForRadius, TILE_DEG, MARGIN_KM } from './tileCodec';
 import { sinuosityScore, flowCurvature, pathLength, type LatLng } from './geometry';
 
 const WNY: LatLng[] = [
@@ -77,6 +77,20 @@ describe('tilesForBounds', () => {
     ]) {
       expect(tiles).toContainEqual(tileIndex(la, lo));
     }
+  });
+
+  it('always contains the required set, and is strictly larger where the margin crosses a boundary', () => {
+    // Grid quantization means the margin often adds nothing (both boxes land in the same cells);
+    // what must ALWAYS hold is containment. The second half pins a centre where it genuinely grows,
+    // so a margin regressed to zero would still be caught.
+    for (const [lat, lon] of [[42.75, -78.25], [42.99, -78.49], [43.01, -78.51], [44.2, -74.1]]) {
+      const req = tilesForRadius(lat, lon, 30).map(([a, b]) => tileKey(a, b));
+      const all = new Set(tilesForBounds(lat, lon, 30).map(([a, b]) => tileKey(a, b)));
+      for (const k of req) expect(all.has(k)).toBe(true);
+    }
+    // At 42.70, a 30km reach ends at 42.97 (still row 85) while 30+12km reaches 43.08 (row 86),
+    // so the margin must pull in an extra row here.
+    expect(tilesForBounds(42.70, -78.25, 30).length).toBeGreaterThan(tilesForRadius(42.70, -78.25, 30).length);
   });
 
   it('stays economical — a max-radius scan loads well under twenty tiles', () => {

@@ -11,14 +11,54 @@ import type { ScannedRoad, ScoredRoad, ScenicRubric } from '../data/types';
 import type { ScenicPOI } from './features';
 import type { RubricTells } from './sceneryTells';
 import type { AreaScan } from './overpass';
-import { decodePath, tileKey, tilesForBounds, TILE_DEG } from './tileCodec';
+import { decodePath, tileKey, tilesForBounds, tilesForRadius, TILE_DEG } from './tileCodec';
 
-/** Built coverage, mirroring GRID in scripts/build-tiles.mjs. Outside this, callers use Overpass. */
+/**
+ * Bounding rectangle of the build grid. Only a cheap pre-filter: actual coverage is the New York
+ * outline, which is roughly half this box, so passing this does NOT mean the corpus can serve the
+ * scan. {@link manifestHas} is the authority.
+ */
 export const COVERAGE = { s: 40.5, w: -79.8, n: 45.0, e: -71.8 };
 
-/** Is a scan centre inside the precomputed corpus? */
+/** Cheap "could the corpus plausibly cover this?" gate, to avoid fetching a manifest for Nevada. */
 export function inCoverage(center: LatLng): boolean {
   return center[0] >= COVERAGE.s && center[0] < COVERAGE.n && center[1] >= COVERAGE.w && center[1] < COVERAGE.e;
+}
+
+interface Manifest {
+  v: number;
+  tileDeg: number;
+  marginKm: number;
+  tiles: string[];
+}
+
+/**
+ * Which tiles actually exist, published by the builder.
+ *
+ * Without this the client would have to duplicate the state outline to know its own coverage — and
+ * a drifted copy means scans near the border quietly return partial results. Fetched once and
+ * cached for the session; the promise itself is memoized so concurrent scans share one request.
+ */
+let manifestPromise: Promise<Set<string>> | null = null;
+
+export function clearManifestCache(): void {
+  manifestPromise = null;
+}
+
+async function loadManifest(signal?: AbortSignal): Promise<Set<string>> {
+  if (!manifestPromise) {
+    manifestPromise = (async () => {
+      const res = await fetch(`${TILE_BASE}manifest.json`, { signal });
+      if (!res.ok) throw new TileMissError(`manifest: HTTP ${res.status}`);
+      const m = (await res.json()) as Manifest;
+      if (!Array.isArray(m.tiles)) throw new TileMissError('manifest: malformed');
+      return new Set(m.tiles);
+    })().catch((e) => {
+      manifestPromise = null; // a transient failure must not poison the rest of the session
+      throw e;
+    });
+  }
+  return manifestPromise;
 }
 
 /** Base path for tile fetches. Vite rewrites BASE_URL to `/sinuosity/` in a production build. */
@@ -116,21 +156,28 @@ export async function scanAreaFromTiles(
   radiusKm: number,
   signal?: AbortSignal,
 ): Promise<AreaScan> {
-  const keys = tilesForBounds(center[0], center[1], radiusKm);
+  const available = await loadManifest(signal);
 
-  const loaded = await Promise.all(
+  // Every tile overlapping the scanned radius must exist. A gap here is not "a few missing roads",
+  // it is a missing sector of the circle — and the scan would still look perfectly normal.
+  const missing = tilesForRadius(center[0], center[1], radiusKm)
+    .map(([a, b]) => tileKey(a, b))
+    .filter((k) => !available.has(k));
+  if (missing.length) {
+    throw new TileMissError(`outside built coverage (${missing.length} required tile(s) absent)`);
+  }
+
+  // Margin tiles are best-effort: skip the ones the manifest says were never built.
+  const keys = tilesForBounds(center[0], center[1], radiusKm).filter(([a, b]) => available.has(tileKey(a, b)));
+
+  const present = await Promise.all(
     keys.map(async ([a, b]) => {
-      const url = `${TILE_BASE}${tileKey(a, b)}.json`;
-      const res = await fetch(url, { signal });
-      // A tile outside the built grid legitimately 404s — the scan bbox can overhang the coverage
-      // edge. Treat it as empty rather than a miss; inCoverage() already gated the centre.
-      if (res.status === 404) return null;
+      const res = await fetch(`${TILE_BASE}${tileKey(a, b)}.json`, { signal });
       if (!res.ok) throw new TileMissError(`tile ${tileKey(a, b)}: HTTP ${res.status}`);
       return decodeTile((await res.json()) as WireTile);
     }),
   );
 
-  const present = loaded.filter((t): t is NonNullable<typeof t> => t !== null);
   if (!present.length) throw new TileMissError('no tiles available for this area');
 
   const corpus: ScannedRoad[] = [];

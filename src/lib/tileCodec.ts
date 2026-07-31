@@ -97,11 +97,10 @@ export function tileBounds(latIdx: number, lonIdx: number): [number, number, num
  */
 export const MARGIN_KM = 12;
 
-/** Every tile a scan of `radiusKm` around `center` must load, including {@link MARGIN_KM}. */
-export function tilesForBounds(lat: number, lon: number, radiusKm: number): [number, number][] {
-  const padded = radiusKm + MARGIN_KM;
-  const dLat = padded / 111;
-  const dLon = padded / (111 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)));
+/** Tiles intersecting a box of `reachKm` around the point. */
+function tilesWithin(lat: number, lon: number, reachKm: number): [number, number][] {
+  const dLat = reachKm / 111;
+  const dLon = reachKm / (111 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)));
   const [sLat, sLon] = tileIndex(lat - dLat, lon - dLon);
   const [nLat, nLon] = tileIndex(lat + dLat, lon + dLon);
 
@@ -110,4 +109,25 @@ export function tilesForBounds(lat: number, lon: number, radiusKm: number): [num
     for (let b = sLon; b <= nLon; b++) tiles.push([a, b]);
   }
   return tiles;
+}
+
+/**
+ * Tiles a scan REQUIRES — those overlapping the scanned radius itself.
+ *
+ * If any of these is missing the corpus cannot answer the scan honestly: the result would look
+ * normal while omitting whole sectors of the circle. Callers treat a gap here as a hard miss and
+ * fall back to Overpass. (Coverage is a state outline, not the grid rectangle, so a scan just
+ * outside NY genuinely does hit this.)
+ */
+export function tilesForRadius(lat: number, lon: number, radiusKm: number): [number, number][] {
+  return tilesWithin(lat, lon, radiusKm);
+}
+
+/**
+ * Every tile a scan should LOAD — the required set plus {@link MARGIN_KM} of neighbours holding
+ * ways whose midpoints fall outside the radius. Margin tiles are best-effort: a missing one costs
+ * a few edge roads, not the integrity of the scan.
+ */
+export function tilesForBounds(lat: number, lon: number, radiusKm: number): [number, number][] {
+  return tilesWithin(lat, lon, radiusKm + MARGIN_KM);
 }
