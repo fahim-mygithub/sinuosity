@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import { useLeafletMap } from './hooks/useLeafletMap';
 import { useBottomSheet } from './hooks/useBottomSheet';
-import { scanArea, OverpassError, type AreaScan } from './lib/overpass';
+import { OverpassError, type AreaScan } from './lib/overpass';
+import { fetchAreaScan } from './lib/areaSource';
 import { buildRides } from './lib/routeBuilder';
 import { BIAS_PRESETS, normalizeWeights, type BiasWeights, type BiasPreset } from './lib/composite';
 import { CURATED_ROUTES } from './data/curatedRoutes';
@@ -538,19 +539,19 @@ export default function App() {
     if (!map || scanning) return;
     const controller = new AbortController();
     scanController.current = controller;
-    // Two Overpass queries run in parallel (road network + scenic-feature catalog), each with its
-    // own mirror failover. Measured at the slider's max 30km radius: ~24s roads, ~17s scenic — and
-    // Overpass latency is near-constant dispatch overhead, not payload-driven, so a busy moment
-    // moves that by seconds, not milliseconds. This budget must cover a slow lead mirror AND one
-    // full fallback attempt, or a recoverable failover gets killed and reported as "servers busy".
-    // The user can always stop early — the Cancel button aborts the same controller.
+    // Inside the precomputed corpus this resolves in a few hundred ms from static tiles. Outside
+    // it (or if the corpus fails) it falls back to two parallel Overpass queries, each with mirror
+    // failover — measured ~24s roads / ~17s scenic at the 30km max, and that latency is near-
+    // constant dispatch overhead rather than payload-driven, so a busy moment moves it by seconds.
+    // The budget must cover a slow lead mirror AND one full fallback attempt, or a recoverable
+    // failover gets killed and reported as "servers busy". Cancel aborts the same controller.
     const timeout = setTimeout(() => controller.abort(), 100000);
 
     setScanning(true);
     clearLayers();
     drawScanCircle(scanCenterLatLng);
     try {
-      const scan = await scanArea(scanCenterLatLng, scanRadius, controller.signal);
+      const { scan } = await fetchAreaScan(scanCenterLatLng, scanRadius, controller.signal);
       setAreaScan(scan);
       const rides = rebuildRides(scan, bias, loopMode, pavedOnly);
       if (rides.length) {

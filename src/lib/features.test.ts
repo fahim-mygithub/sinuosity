@@ -40,6 +40,43 @@ describe('buildTellsQuery', () => {
   })
 })
 
+describe('parity with the build-time categorizer (scripts/lib/feature-catalog.mjs)', () => {
+  // The tile builder bakes ITS categorizer's output and the browser decodes it straight into a
+  // FeatureCatalog. If the two drift, the same road scores differently depending on whether the
+  // tile corpus or the Overpass fallback served it — a bug that hides behind plausible numbers.
+  it('produces identical tells and pois for the same elements', async () => {
+    const mjs = await import('../../scripts/lib/feature-catalog.mjs')
+    const cases: OverpassElement[][] = [
+      [
+        { type: 'node', id: 1, lat: 42.5, lon: -78.6, tags: { tourism: 'viewpoint', name: 'Big View', wikidata: 'Q123' } },
+        { type: 'way', id: 2, tags: { waterway: 'river', name: 'Cattaraugus Creek' }, geometry: [
+          { lat: 42.51, lon: -78.61 }, { lat: 42.52, lon: -78.62 }, { lat: 42.53, lon: -78.63 } ] },
+        { type: 'way', id: 3, tags: { landuse: 'forest', name: 'Zoar Woods' }, geometry: [
+          { lat: 42.55, lon: -78.7 }, { lat: 42.56, lon: -78.7 },
+          { lat: 42.56, lon: -78.69 }, { lat: 42.55, lon: -78.69 }, { lat: 42.55, lon: -78.7 } ] },
+      ],
+      [], // empty area
+      // unnamed small pond vs named pond: exercises the BIG_WATER_M2 / SMALL_POND_W branch
+      [
+        { type: 'way', id: 90, tags: { natural: 'water' }, geometry: [
+          { lat: 42.5, lon: -78.5 }, { lat: 42.5005, lon: -78.5 },
+          { lat: 42.5005, lon: -78.4995 }, { lat: 42.5, lon: -78.4995 }, { lat: 42.5, lon: -78.5 } ] },
+        { type: 'way', id: 91, tags: { natural: 'water', name: 'Silver Lake' }, geometry: [
+          { lat: 42.6, lon: -78.6 }, { lat: 42.62, lon: -78.6 },
+          { lat: 42.62, lon: -78.58 }, { lat: 42.6, lon: -78.58 }, { lat: 42.6, lon: -78.6 } ] },
+        { type: 'node', id: 92, lat: 42.7, lon: -78.7, tags: { natural: 'peak', name: 'Bald Hill' } },
+        { type: 'way', id: 93, tags: { landuse: 'industrial' }, geometry: [
+          { lat: 42.8, lon: -78.8 }, { lat: 42.81, lon: -78.8 }, { lat: 42.81, lon: -78.79 } ] },
+        { type: 'relation', id: 94, tags: { natural: 'water', name: 'Big Reservoir' },
+          members: [{ geometry: [{ lat: 43.0, lon: -79.0 }, { lat: 43.02, lon: -79.0 }, { lat: 43.02, lon: -78.98 }] }] },
+      ],
+    ]
+    for (const els of cases) {
+      expect(mjs.categorizeFeatures(els)).toEqual(categorizeFeatures(els))
+    }
+  })
+})
+
 describe('categorizeFeatures', () => {
   const elements: OverpassElement[] = [
     // viewpoint node (notable via wikidata)

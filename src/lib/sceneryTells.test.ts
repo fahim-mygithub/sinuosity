@@ -118,3 +118,44 @@ describe('measureRubric', () => {
     expect(r.notability).toBeGreaterThanOrEqual(7)
   })
 })
+
+describe('parity with the build-time scenery lib (scripts/lib/scenery-tells.mjs)', () => {
+  // The tile corpus bakes each road's rubric with the .mjs twin; the app re-measures the STITCHED
+  // ride polyline at runtime with this TS module (routeBuilder.ts). If the two disagree, a ride's
+  // headline rubric contradicts the rubrics of the roads it is made of — and both look plausible.
+  // The .mjs was given a grid index for build speed; this proves the index did not move results.
+  it('measures the same rubric as the runtime implementation', async () => {
+    const mjs = await import('../../scripts/lib/scenery-tells.mjs')
+
+    let seed = 4242
+    const rnd = (): number => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296)
+
+    // Big enough that the .mjs takes its indexed path (GRID_MIN is 512) while the .ts stays brute
+    // force — which is exactly the comparison that matters.
+    const tells = {
+      waterPts: Array.from({ length: 2500 }, () => ({ pt: [42.5 + rnd() * 0.4, -78.8 + rnd() * 0.4] as LatLng, w: [0.3, 0.5, 0.8, 1.0][Math.floor(rnd() * 4)] })),
+      waterAreas: [[[42.60, -78.70], [42.64, -78.70], [42.64, -78.66], [42.60, -78.66]] as LatLng[]],
+      greenAreas: [[[42.55, -78.75], [42.62, -78.75], [42.62, -78.68], [42.55, -78.68]] as LatLng[]],
+      greenPts: Array.from({ length: 1500 }, () => [42.5 + rnd() * 0.4, -78.8 + rnd() * 0.4] as LatLng),
+      uglyAreas: [[[42.70, -78.50], [42.72, -78.50], [42.72, -78.48]] as LatLng[]],
+      uglyPts: Array.from({ length: 900 }, () => [42.5 + rnd() * 0.4, -78.8 + rnd() * 0.4] as LatLng),
+      view: Array.from({ length: 700 }, () => [42.5 + rnd() * 0.4, -78.8 + rnd() * 0.4] as LatLng),
+      peak: Array.from({ length: 700 }, () => [42.5 + rnd() * 0.4, -78.8 + rnd() * 0.4] as LatLng),
+      notable: Array.from({ length: 700 }, () => ({ pt: [42.5 + rnd() * 0.4, -78.8 + rnd() * 0.4] as LatLng, w: rnd() })),
+    }
+
+    const routes: LatLng[][] = [
+      ROUTE,
+      Array.from({ length: 60 }, (_, i) => [42.56 + i * 0.0012, -78.74 + i * 0.0011] as LatLng),
+      Array.from({ length: 25 }, (_, i) => [42.61 + i * 0.0008, -78.69] as LatLng),
+    ]
+
+    for (const route of routes) {
+      const a = measureRubric(route, tells)
+      const b = mjs.measureRubric(route, tells)
+      for (const k of ['scenery', 'greenery', 'water', 'notability'] as const) {
+        expect(b[k]).toBeCloseTo(a[k], 10)
+      }
+    }
+  })
+})

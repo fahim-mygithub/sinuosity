@@ -1,0 +1,81 @@
+name: Rebuild scan tile corpus
+
+# The precomputed road/scenic corpus the Scan tab reads instead of querying Overpass live.
+# Deliberately SEPARATE from deploy.yml: this crawl takes ~1-2h, and a push to main must never
+# wait on it. Committing tiles here triggers deploy.yml normally, which publishes them.
+#
+# See docs/plans/2026-07-31-precomputed-tiles-design.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Rebuild tiles that already exist (otherwise only missing ones are fetched)'
+        type: boolean
+        default: false
+  schedule:
+    # 04:00 UTC on the 1st. OSM road geometry moves on the order of weeks, so monthly is ample.
+    - cron: '0 4 1 * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-tiles
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    # The crawl is bounded by Overpass, not by CPU. Generous, but under the 6h job ceiling.
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # The builder shares its codec and categorizer with the app through duplicated .mjs twins.
+      # Parity tests are what keep those from drifting, so a desync must stop the crawl BEFORE it
+      # writes 144 tiles of subtly wrong data.
+      - name: Verify build/runtime parity before crawling
+        run: npx vitest run src/lib/tileCodec.test.ts src/lib/features.test.ts
+
+      - name: Crawl tiles
+        id: crawl
+        # Manual run: fill in whatever is missing (or --force to rebuild everything).
+        # Scheduled run: rotate the 40 stalest tiles, because "skip existing" would otherwise make
+        # the monthly job a no-op forever once the grid is complete, while --force would rewrite
+        # the entire committed corpus every month.
+        # Failures are tolerated on purpose — partial progress is still worth committing (below).
+        continue-on-error: true
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            node scripts/build-tiles.mjs --refresh-oldest 40
+          else
+            node scripts/build-tiles.mjs ${{ inputs.force && '--force' || '' }}
+          fi
+
+      - name: Commit tiles
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/tiles
+          if git diff --staged --quiet; then
+            echo "No tile changes."
+            exit 0
+          fi
+          COUNT=$(ls public/tiles | wc -l)
+          SIZE=$(du -sh public/tiles | cut -f1)
+          git commit -m "Rebuild scan tile corpus ($COUNT tiles, $SIZE)"
+          git push
+
+      # A partial crawl is committed above, then reported as a failure so it is visible rather
+      # than silently leaving holes in coverage. Re-running resumes from where it stopped.
+      - name: Fail if the crawl did not complete
+        if: steps.crawl.outcome == 'failure'
+        run: |
+          echo "::error::Tile crawl did not complete — some tiles are missing. Partial progress was committed; re-run this workflow to resume."
+          exit 1

@@ -17,7 +17,9 @@
     "scenic:assemble": "node scripts/assemble-scenic.mjs",
     "scenic:recurate": "node scripts/recurate-scenic.mjs",
     "scenic:verify": "node scripts/verify-roads.mjs",
-    "curated:build": "node scripts/curate-routes.mjs"
+    "curated:build": "node scripts/curate-routes.mjs",
+    "tiles:build": "node scripts/build-tiles.mjs",
+    "tiles:refresh": "node scripts/build-tiles.mjs --refresh-oldest 40"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.58.0",

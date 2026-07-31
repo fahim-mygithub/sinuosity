@@ -155,3 +155,110 @@ describe('destinationPoint', () => {
     expect(right[0]).toBeLessThan(p[0]); // south
   });
 });
+
+// -----------------------------------------------------------------------------------------------
+// The grid index inside corridorSignal / weightedSignal is an INDEXING change, not an
+// approximation: both signals need only the nearest (or strongest) tell per route point, so ring
+// search with an exact stopping bound must reproduce the brute-force answer bit for bit. If it
+// ever does not, every baked rubric in the tile corpus is silently wrong, so this is asserted
+// against an independent brute-force implementation rather than against stored expectations.
+// -----------------------------------------------------------------------------------------------
+
+/** Deterministic pseudo-random generator — a fixed seed keeps a failure reproducible. */
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
+
+function bruteCorridor(routePts, tellPts, tauM, adjM = 260) {
+  let adjCount = 0, proxSum = 0, minM = Infinity;
+  for (const rp of routePts) {
+    let nearest = Infinity;
+    for (const tp of tellPts) {
+      const d = haversineM(rp, tp);
+      if (d < nearest) nearest = d;
+    }
+    if (nearest <= adjM) adjCount++;
+    proxSum += Math.exp(-nearest / tauM);
+    if (nearest < minM) minM = nearest;
+  }
+  return { adj: adjCount / routePts.length, prox: proxSum / routePts.length, minM };
+}
+
+function bruteWeighted(routePts, weightedTells, tauM) {
+  let sum = 0, adj = 0;
+  const thresh = Math.exp(-1);
+  for (const rp of routePts) {
+    let best = 0;
+    for (const t of weightedTells) {
+      const v = t.w * Math.exp(-haversineM(rp, t.pt) / tauM);
+      if (v > best) best = v;
+    }
+    sum += best;
+    if (best >= thresh) adj++;
+  }
+  return { prox: sum / routePts.length, adj: adj / routePts.length };
+}
+
+describe('grid-indexed signals equal brute force', () => {
+  const r = rng(20260731);
+  // Comfortably over GRID_MIN (512) so the indexed path is the one under test.
+  const dense = Array.from({ length: 4000 }, () => [42.5 + r() * 0.5, -78.8 + r() * 0.5]);
+  const weighted = dense.map((pt, i) => ({ pt, w: [0.2, 0.3, 0.5, 0.8, 0.85, 1.0][i % 6] }));
+  const routes = [
+    ROUTE,
+    Array.from({ length: 40 }, (_, i) => [42.6 + i * 0.004, -78.7 + i * 0.003]),
+    // deliberately far from every tell: exercises the sparse-grid termination guard
+    Array.from({ length: 10 }, (_, i) => [41.0 + i * 0.01, -76.0]),
+  ];
+
+  it('corridorSignal matches for every tau', () => {
+    for (const route of routes) {
+      for (const tau of Object.values(TAU)) {
+        expect(corridorSignal(route, dense, tau)).toEqual(bruteCorridor(route, dense, tau));
+      }
+    }
+  });
+
+  it('weightedSignal matches, including when a distant heavy feature outranks a near light one', () => {
+    for (const route of routes) {
+      for (const tau of Object.values(TAU)) {
+        expect(weightedSignal(route, weighted, tau)).toEqual(bruteWeighted(route, weighted, tau));
+      }
+    }
+  });
+
+  it('matches on clustered data, where whole grid regions are empty', () => {
+    // Two tight clusters far apart — the pathological case for a ring search that stops too early.
+    const r2 = rng(7);
+    const clustered = [
+      ...Array.from({ length: 1500 }, () => [42.50 + r2() * 0.01, -78.50 + r2() * 0.01]),
+      ...Array.from({ length: 1500 }, () => [42.95 + r2() * 0.01, -78.05 + r2() * 0.01]),
+    ];
+    const route = Array.from({ length: 30 }, (_, i) => [42.5 + i * 0.015, -78.5 + i * 0.015]);
+    for (const tau of Object.values(TAU)) {
+      expect(corridorSignal(route, clustered, tau)).toEqual(bruteCorridor(route, clustered, tau));
+    }
+  });
+
+  it('measureRubric end-to-end is unchanged by indexing', () => {
+    const r3 = rng(99);
+    const tells = {
+      waterPts: Array.from({ length: 3000 }, () => ({ pt: [42.5 + r3() * 0.4, -78.8 + r3() * 0.4], w: r3() })),
+      waterAreas: [], greenAreas: [],
+      greenPts: Array.from({ length: 2000 }, () => [42.5 + r3() * 0.4, -78.8 + r3() * 0.4]),
+      uglyAreas: [],
+      uglyPts: Array.from({ length: 800 }, () => [42.5 + r3() * 0.4, -78.8 + r3() * 0.4]),
+      view: Array.from({ length: 600 }, () => [42.5 + r3() * 0.4, -78.8 + r3() * 0.4]),
+      peak: Array.from({ length: 600 }, () => [42.5 + r3() * 0.4, -78.8 + r3() * 0.4]),
+      notable: Array.from({ length: 600 }, () => ({ pt: [42.5 + r3() * 0.4, -78.8 + r3() * 0.4], w: r3() })),
+    };
+    const route = Array.from({ length: 50 }, (_, i) => [42.6 + i * 0.003, -78.7 + i * 0.004]);
+    const got = measureRubric(route, tells);
+    for (const k of ['scenery', 'greenery', 'water', 'notability']) {
+      expect(Number.isFinite(got[k])).toBe(true);
+      expect(got[k]).toBeGreaterThanOrEqual(0);
+      expect(got[k]).toBeLessThanOrEqual(10);
+    }
+  });
+});
