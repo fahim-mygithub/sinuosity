@@ -91,12 +91,178 @@ export function pointInRing(pt: LatLng, ring: LatLng[]): boolean {
   return inside
 }
 
+/**
+ * Bounding boxes for a polygon list, cached per array.
+ *
+ * A point inside a ring is always inside that ring's bbox, so rejecting on the bbox first is exact.
+ * A tile-sourced scan merges ~6000 forest/park polygons, and routeBuilder re-measures every stitched
+ * ride against all of them.
+ */
+const bboxCache = new WeakMap<LatLng[][], [number, number, number, number][]>()
+function bboxesFor(polygons: LatLng[][]): [number, number, number, number][] {
+  let boxes = bboxCache.get(polygons)
+  if (boxes) return boxes
+  boxes = polygons.map((poly) => {
+    let s = Infinity, w = Infinity, n = -Infinity, e = -Infinity
+    for (const p of poly) {
+      if (p[0] < s) s = p[0]
+      if (p[0] > n) n = p[0]
+      if (p[1] < w) w = p[1]
+      if (p[1] > e) e = p[1]
+    }
+    return [s, w, n, e] as [number, number, number, number]
+  })
+  bboxCache.set(polygons, boxes)
+  return boxes
+}
+
 /** Fraction of route sample points that fall inside ANY of the given polygons (rings). */
 export function fractionInside(routePts: LatLng[], polygons: LatLng[][]): number {
   if (!polygons || !polygons.length || !routePts.length) return 0
+  const boxes = bboxesFor(polygons)
   let c = 0
-  for (const rp of routePts) if (polygons.some((poly) => poly.length >= 3 && pointInRing(rp, poly))) c++
+  for (const rp of routePts) {
+    for (let i = 0; i < polygons.length; i++) {
+      const b = boxes[i]
+      if (rp[0] < b[0] || rp[0] > b[2] || rp[1] < b[1] || rp[1] > b[3]) continue
+      if (polygons[i].length >= 3 && pointInRing(rp, polygons[i])) { c++; break }
+    }
+  }
   return c / routePts.length
+}
+
+// ------------------------------------------------------------------------------------------------
+// Exact nearest-feature acceleration. Mirrors scripts/lib/scenery-tells.mjs.
+//
+// Both signals below need only the NEAREST tell (corridorSignal) or the STRONGEST w*exp(-d/tau)
+// (weightedSignal) per route sample point. Neither sums over all tells, so a spatial index returns
+// EXACTLY the same answer as the brute-force scan — an indexing change, not an approximation.
+//
+// It became necessary when the Scan tab started reading precomputed tiles: a tile-sourced scan
+// merges the tells of ~6-9 whole tiles rather than just the queried radius (a Buffalo scan carries
+// ~255,000 water vertices), and routeBuilder re-measures the rubric on every stitched ride against
+// all of them. Brute force there froze the page outright.
+// ------------------------------------------------------------------------------------------------
+
+/** Below this many tells the scan is already cheap and a grid would only add overhead. */
+const GRID_MIN = 512
+/** Grid cell edge (metres). Small enough that few points share a cell, big enough to bound rings. */
+const CELL_M = 250
+const M_PER_DEG_LAT = 111320
+
+interface Grid<T> {
+  cells: Map<string, T[]>
+  dLat: number
+  dLon: number
+  iMin: number
+  iMax: number
+  jMin: number
+  jMax: number
+}
+
+const gridCache = new WeakMap<object, Grid<unknown>>()
+
+function buildGrid<T>(tells: T[], ptOf: (t: T) => LatLng): Grid<T> {
+  let latSum = 0
+  for (const t of tells) latSum += ptOf(t)[0]
+  const lat0 = latSum / tells.length
+  const dLat = CELL_M / M_PER_DEG_LAT
+  const dLon = CELL_M / (M_PER_DEG_LAT * Math.max(0.05, Math.cos((lat0 * Math.PI) / 180)))
+
+  const cells = new Map<string, T[]>()
+  // The occupied extent, in cell coordinates. Ring search stops once it has swept past this, which
+  // is what makes termination exact: an arbitrary ring cap would silently report "nothing found"
+  // for a route far from all data, where brute force still returns a real (if tiny) distance.
+  let iMin = Infinity, iMax = -Infinity, jMin = Infinity, jMax = -Infinity
+  for (const t of tells) {
+    const p = ptOf(t)
+    const i = Math.floor(p[0] / dLat)
+    const j = Math.floor(p[1] / dLon)
+    if (i < iMin) iMin = i
+    if (i > iMax) iMax = i
+    if (j < jMin) jMin = j
+    if (j > jMax) jMax = j
+    const key = `${i},${j}`
+    let bucket = cells.get(key)
+    if (!bucket) cells.set(key, (bucket = []))
+    bucket.push(t)
+  }
+  return { cells, dLat, dLon, iMin, iMax, jMin, jMax }
+}
+
+function gridFor<T>(tells: T[], ptOf: (t: T) => LatLng): Grid<T> {
+  let g = gridCache.get(tells as unknown as object) as Grid<T> | undefined
+  if (!g) gridCache.set(tells as unknown as object, (g = buildGrid(tells, ptOf)) as Grid<unknown>)
+  return g
+}
+
+/**
+ * Walk grid rings outward from `rp` until no ring could improve on what has been found.
+ * `stillWorth(best, ringMinM)` returning false is what makes the early exit exact.
+ */
+function ringSearch<T, B>(
+  grid: Grid<T>,
+  rp: LatLng,
+  seed: B,
+  consider: (best: B, t: T) => B,
+  stillWorth: (best: B, ringMinM: number) => boolean,
+): B {
+  const ci = Math.floor(rp[0] / grid.dLat)
+  const cj = Math.floor(rp[1] / grid.dLon)
+  let best = seed
+
+  // Skip straight to the first ring that can intersect occupied space; cells nearer than this are
+  // provably outside the occupied bbox, so nothing is missed and empty rings are not walked.
+  const r0 = Math.max(
+    Math.max(grid.iMin - ci, ci - grid.iMax, 0),
+    Math.max(grid.jMin - cj, cj - grid.jMax, 0),
+  )
+
+  for (let r = r0; ; r++) {
+    // Anything in ring r is at least (r-1) cells away; 0.9 absorbs lat/lon cell anisotropy.
+    const ringMinM = r === 0 ? 0 : (r - 1) * CELL_M * 0.9
+    if (r > r0 && !stillWorth(best, ringMinM)) break
+
+    for (let i = Math.max(ci - r, grid.iMin); i <= Math.min(ci + r, grid.iMax); i++) {
+      for (let j = Math.max(cj - r, grid.jMin); j <= Math.min(cj + r, grid.jMax); j++) {
+        // Only the perimeter of ring r is new; the interior was covered by earlier rings.
+        if (r > 0 && i !== ci - r && i !== ci + r && j !== cj - r && j !== cj + r) continue
+        const bucket = grid.cells.get(`${i},${j}`)
+        if (!bucket) continue
+        for (const t of bucket) best = consider(best, t)
+      }
+    }
+
+    if (ci - r <= grid.iMin && ci + r >= grid.iMax && cj - r <= grid.jMin && cj + r >= grid.jMax) break
+  }
+  return best
+}
+
+/**
+ * Is any weighted tell within `maxM` of `pt`? Exact, and short-circuits on the first hit.
+ *
+ * Exists for the "does this road genuinely run ALONGSIDE water" tests in routeBuilder, which ask
+ * this question for every vertex of every stitched ride. Those ran brute force over a filtered copy
+ * of every water vertex in the scan; once the Scan tab began merging whole tiles (~255,000 water
+ * vertices for a Buffalo scan) that became ~50M distance calls per ride and took 20s of main-thread
+ * time. The grid makes it a bounded local lookup with the same answer.
+ *
+ * Pass a STABLE array — the grid is cached per array identity, so rebuilding the filtered list on
+ * every call would rebuild the index every call too.
+ */
+export function anyWithinM(tells: WeightedTell[], pt: LatLng, maxM: number): boolean {
+  if (!tells.length) return false
+  if (tells.length < GRID_MIN) {
+    for (const t of tells) if (haversineM(pt, t.pt) <= maxM) return true
+    return false
+  }
+  const grid = gridFor(tells, (t) => t.pt)
+  return ringSearch<WeightedTell, boolean>(
+    grid, pt, false,
+    (found, t) => found || haversineM(pt, t.pt) <= maxM,
+    // Stop as soon as a hit is found, or once no ring can still be within maxM.
+    (found, ringMinM) => !found && ringMinM <= maxM,
+  )
 }
 
 /**
@@ -111,14 +277,26 @@ export function corridorSignal(
   adjM = ADJ_M,
 ): { adj: number; prox: number; minM: number } {
   if (!tellPts || !tellPts.length || !routePts.length) return { adj: 0, prox: 0, minM: Infinity }
+  const grid = tellPts.length >= GRID_MIN ? gridFor(tellPts, (p) => p) : null
+
   let adjCount = 0
   let proxSum = 0
   let minM = Infinity
   for (const rp of routePts) {
-    let nearest = Infinity
-    for (const tp of tellPts) {
-      const d = haversineM(rp, tp)
-      if (d < nearest) nearest = d
+    let nearest: number
+    if (grid) {
+      nearest = ringSearch<LatLng, number>(
+        grid, rp, Infinity,
+        (best, tp) => { const d = haversineM(rp, tp); return d < best ? d : best },
+        // Keep expanding only while a point out at ringMinM could still be nearer than `best`.
+        (best, ringMinM) => ringMinM < best,
+      )
+    } else {
+      nearest = Infinity
+      for (const tp of tellPts) {
+        const d = haversineM(rp, tp)
+        if (d < nearest) nearest = d
+      }
     }
     if (nearest <= adjM) adjCount++
     proxSum += Math.exp(-nearest / tauM)
@@ -137,14 +315,29 @@ export function weightedSignal(
   tauM: number,
 ): { prox: number; adj: number } {
   if (!weightedTells || !weightedTells.length || !routePts.length) return { prox: 0, adj: 0 }
+  const grid = weightedTells.length >= GRID_MIN ? gridFor(weightedTells, (t) => t.pt) : null
+  // A far point can still win if its weight is high, so the ring bound uses the LARGEST weight
+  // present: nothing beyond ringMinM can beat `best` once wMax*exp(-ringMinM/tau) <= best.
+  let wMax = 0
+  if (grid) for (const t of weightedTells) if (t.w > wMax) wMax = t.w
+
   let sum = 0
   let adj = 0
   const thresh = Math.exp(-1)
   for (const rp of routePts) {
-    let best = 0
-    for (const t of weightedTells) {
-      const v = t.w * Math.exp(-haversineM(rp, t.pt) / tauM)
-      if (v > best) best = v
+    let best: number
+    if (grid) {
+      best = ringSearch<WeightedTell, number>(
+        grid, rp, 0,
+        (b, t) => { const v = t.w * Math.exp(-haversineM(rp, t.pt) / tauM); return v > b ? v : b },
+        (b, ringMinM) => wMax * Math.exp(-ringMinM / tauM) > b,
+      )
+    } else {
+      best = 0
+      for (const t of weightedTells) {
+        const v = t.w * Math.exp(-haversineM(rp, t.pt) / tauM)
+        if (v > best) best = v
+      }
     }
     sum += best
     if (best >= thresh) adj++

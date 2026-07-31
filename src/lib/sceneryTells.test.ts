@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
-  sat, sampleRoute, corridorSignal, weightedSignal, measureRubric, TAU,
+  sat, sampleRoute, corridorSignal, weightedSignal, measureRubric, anyWithinM, TAU,
   pointInRing, fractionInside,
 } from './sceneryTells'
-import type { LatLng } from './geometry'
+import { haversine, type LatLng } from './geometry'
+
+/** Metres between two points — the unit corridorSignal/weightedSignal work in. */
+const haversineM = (a: LatLng, b: LatLng): number => haversine(a, b) * 1000
 
 // A short WNY-ish route polyline (lake-ish corridor along ~constant lat).
 const ROUTE: LatLng[] = [
@@ -157,5 +160,142 @@ describe('parity with the build-time scenery lib (scripts/lib/scenery-tells.mjs)
         expect(b[k]).toBeCloseTo(a[k], 10)
       }
     }
+  })
+})
+
+// -----------------------------------------------------------------------------------------------
+// The grid index inside corridorSignal / weightedSignal is an INDEXING change, not an
+// approximation. Proven against an independent brute-force implementation rather than against
+// stored expectations, because if it ever diverges every scenery score in the app is quietly wrong.
+// -----------------------------------------------------------------------------------------------
+
+function bruteCorridor(routePts: LatLng[], tellPts: LatLng[], tauM: number, adjM = 260) {
+  let adjCount = 0, proxSum = 0, minM = Infinity
+  for (const rp of routePts) {
+    let nearest = Infinity
+    for (const tp of tellPts) {
+      const d = haversineM(rp, tp)
+      if (d < nearest) nearest = d
+    }
+    if (nearest <= adjM) adjCount++
+    proxSum += Math.exp(-nearest / tauM)
+    if (nearest < minM) minM = nearest
+  }
+  return { adj: adjCount / routePts.length, prox: proxSum / routePts.length, minM }
+}
+
+function bruteWeighted(routePts: LatLng[], tells: { pt: LatLng; w: number }[], tauM: number) {
+  let sum = 0, adj = 0
+  const thresh = Math.exp(-1)
+  for (const rp of routePts) {
+    let best = 0
+    for (const t of tells) {
+      const v = t.w * Math.exp(-haversineM(rp, t.pt) / tauM)
+      if (v > best) best = v
+    }
+    sum += best
+    if (best >= thresh) adj++
+  }
+  return { prox: sum / routePts.length, adj: adj / routePts.length }
+}
+
+describe('grid-indexed signals equal brute force', () => {
+  let seed = 20260731
+  const rnd = (): number => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296)
+  // Well over GRID_MIN (512) so the indexed path is the one under test.
+  const dense: LatLng[] = Array.from({ length: 4000 }, () => [42.5 + rnd() * 0.5, -78.8 + rnd() * 0.5])
+  const weighted = dense.map((pt, i) => ({ pt, w: [0.2, 0.3, 0.5, 0.8, 0.85, 1.0][i % 6] }))
+  const routes: LatLng[][] = [
+    ROUTE,
+    Array.from({ length: 40 }, (_, i) => [42.6 + i * 0.004, -78.7 + i * 0.003] as LatLng),
+    // deliberately far from every tell — exercises the extent-based termination
+    Array.from({ length: 10 }, (_, i) => [41.0 + i * 0.01, -76.0] as LatLng),
+  ]
+
+  it('corridorSignal matches for every tau', () => {
+    for (const route of routes) {
+      for (const tau of Object.values(TAU)) {
+        expect(corridorSignal(route, dense, tau)).toEqual(bruteCorridor(route, dense, tau))
+      }
+    }
+  })
+
+  it('weightedSignal matches, including when a distant heavy feature outranks a near light one', () => {
+    for (const route of routes) {
+      for (const tau of Object.values(TAU)) {
+        expect(weightedSignal(route, weighted, tau)).toEqual(bruteWeighted(route, weighted, tau))
+      }
+    }
+  })
+
+  it('matches on clustered data, where whole grid regions are empty', () => {
+    let s2 = 7
+    const r2 = (): number => ((s2 = (s2 * 1664525 + 1013904223) >>> 0) / 4294967296)
+    const clustered: LatLng[] = [
+      ...Array.from({ length: 1500 }, () => [42.50 + r2() * 0.01, -78.50 + r2() * 0.01] as LatLng),
+      ...Array.from({ length: 1500 }, () => [42.95 + r2() * 0.01, -78.05 + r2() * 0.01] as LatLng),
+    ]
+    const route: LatLng[] = Array.from({ length: 30 }, (_, i) => [42.5 + i * 0.015, -78.5 + i * 0.015])
+    for (const tau of Object.values(TAU)) {
+      expect(corridorSignal(route, clustered, tau)).toEqual(bruteCorridor(route, clustered, tau))
+    }
+  })
+
+  it('is fast enough for a tile-sourced scan (255k water points, freezes the page brute-force)', () => {
+    const huge = Array.from({ length: 60000 }, () => ({
+      pt: [42.5 + rnd() * 0.9, -79.0 + rnd() * 1.2] as LatLng,
+      w: 0.3,
+    }))
+    const route: LatLng[] = Array.from({ length: 60 }, (_, i) => [42.8 + i * 0.002, -78.7 + i * 0.002])
+    const t0 = performance.now()
+    for (let i = 0; i < 8; i++) weightedSignal(route, huge, TAU.water) // ~8 stitched rides per scan
+    expect(performance.now() - t0).toBeLessThan(2000)
+  })
+})
+
+describe('anyWithinM', () => {
+  let s = 31337
+  const rnd = (): number => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)
+  const dense = Array.from({ length: 3000 }, () => ({
+    pt: [42.5 + rnd() * 0.4, -78.8 + rnd() * 0.4] as LatLng, w: 0.5,
+  }))
+
+  const brute = (pt: LatLng, maxM: number): boolean =>
+    dense.some((t) => haversineM(pt, t.pt) <= maxM)
+
+  it('matches brute force across thresholds and query positions', () => {
+    // Includes points inside the cloud, on its edge, and far outside it.
+    const queries: LatLng[] = [
+      [42.6, -78.6], [42.5, -78.8], [42.9, -78.4], [42.70123, -78.61987],
+      [41.0, -76.0], [43.5, -79.5],
+    ]
+    for (const q of queries) {
+      for (const maxM of [10, 70, 90, 250, 500, 1500, 50000]) {
+        expect(anyWithinM(dense, q, maxM)).toBe(brute(q, maxM))
+      }
+    }
+  })
+
+  it('agrees with brute force on the small-array path too', () => {
+    const few = dense.slice(0, 20)
+    const bruteFew = (pt: LatLng, m: number): boolean => few.some((t) => haversineM(pt, t.pt) <= m)
+    for (const maxM of [50, 500, 5000, 100000]) {
+      expect(anyWithinM(few, [42.6, -78.6], maxM)).toBe(bruteFew([42.6, -78.6], maxM))
+    }
+  })
+
+  it('returns false for an empty tell list', () => {
+    expect(anyWithinM([], [42.6, -78.6], 1000)).toBe(false)
+  })
+
+  it('is fast enough for full-polyline use across many rides', () => {
+    // routeBuilder asks this for EVERY vertex of every stitched ride, not a 60-point sample.
+    const huge = Array.from({ length: 60000 }, () => ({
+      pt: [42.5 + rnd() * 0.9, -79.0 + rnd() * 1.2] as LatLng, w: 0.3,
+    }))
+    const coords: LatLng[] = Array.from({ length: 500 }, (_, i) => [42.8 + i * 0.0004, -78.7 + i * 0.0004])
+    const t0 = performance.now()
+    for (let ride = 0; ride < 8; ride++) for (const c of coords) anyWithinM(huge, c, 90)
+    expect(performance.now() - t0).toBeLessThan(1500)
   })
 })
