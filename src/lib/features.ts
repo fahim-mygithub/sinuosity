@@ -5,7 +5,7 @@
 // measurement, AND collects a flat ScenicPOI list for stop synthesis. Pure catalog: tells.viewMinM
 // is left undefined here — it is nearest-viewpoint distance, computed per-road by the caller.
 
-import { fetchOverpass, type OverpassElement } from './overpass'
+import { fetchOverpass, overpassSettings, MAXSIZE_FEATURES_MIB, type OverpassElement } from './overpass'
 import type { LatLng } from './geometry'
 import type { RubricTells, WeightedTell } from './sceneryTells'
 import type { ScenicStop } from '../data/types'
@@ -44,13 +44,16 @@ export interface FeatureCatalog {
 /**
  * Overpass QL for the scenic feature catalog within `radiusM` of `center`, using `(around:...)`
  * radial selectors (the live-scan equivalent of enrich-scenery's bbox tellsQuery). Same feature
- * classes, same `out geom;` so area features return full vertex rings. `timeout:25` matches the
- * app's server budget (see overpass.ts SERVER_TIMEOUT_S).
+ * classes, same `out geom;` so area features return full vertex rings. The settings prefix comes
+ * from overpass.ts rather than being repeated as a literal — when the two drifted apart this query
+ * kept its own (too-tight) budget and blew it during `print`, so the browser downloaded the whole
+ * multi-MB payload only for fetchOverpass to read the `remark` and discard it. This is the heavier
+ * of the two queries (~10.5MB at 30km), hence the larger declared maxsize.
  */
 export function buildTellsQuery(center: LatLng, radiusM: number): string {
   const a = `around:${radiusM},${center[0]},${center[1]}`
   return (
-    `[out:json][timeout:25];(` +
+    `${overpassSettings(MAXSIZE_FEATURES_MIB)};(` +
     `nwr["tourism"="viewpoint"](${a});` +
     `nwr["natural"~"^(peak|cliff)$"](${a});` +
     `way["natural"="water"](${a});relation["natural"="water"](${a});` +

@@ -5,7 +5,7 @@ import {
   fetchFeatureCatalog,
   clearFeatureCache,
 } from './features'
-import type { OverpassElement } from './overpass'
+import { SERVER_TIMEOUT_S, MAXSIZE_FEATURES_MIB, type OverpassElement } from './overpass'
 
 const HOME: [number, number] = [42.9808, -78.7441]
 
@@ -29,7 +29,11 @@ describe('buildTellsQuery', () => {
     expect(q).toContain('viewpoint')
     expect(q).toContain('around:8000,42.9808,-78.7441')
     expect(q).toContain('out geom')
-    expect(q).toContain('[timeout:25]')
+    // Pinned to the shared budget, not a literal: the two drifting apart is what made the scenic
+    // query blow its timeout during `print` and force a full re-download from the next mirror.
+    expect(q).toContain(`[timeout:${SERVER_TIMEOUT_S}]`)
+    // An explicit maxsize improves admission — undeclared, Overpass assumes a 512MiB claim.
+    expect(q).toContain(`[maxsize:${MAXSIZE_FEATURES_MIB * 1024 * 1024}]`)
     // also covers water, forest, and ugly-landuse classes
     expect(q).toContain('natural')
     expect(q).toContain('landuse')

@@ -19,22 +19,46 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 /**
- * Server-side query budget (seconds). A wide "all roads in a radius" query legitimately takes
- * ~20-25s of server time when the public instances are busy, so this can't be tight — too low
- * and the server self-aborts and returns 0 ways (the old `15` was the real cause of "always
- * busy": heavy scans never had time to finish). The client still bounds wall-clock below.
+ * Server-side query budget (seconds). Measured against overpass-api.de with our real queries: the
+ * roads query at the slider's max 30km radius takes ~24.4s and the scenic union ~17s. The old `25`
+ * left ~0.6s of headroom and turned every busy moment into a self-abort — and when Overpass blows
+ * this budget during `print` (AFTER gathering the data) the client downloads the entire multi-MB
+ * payload only to classify it as a failure and re-download it from the next mirror.
+ *
+ * But bigger is NOT safer here: Overpass admits a query only if its DECLARED resources are at most
+ * half of what is currently available, so over-declaring gets you rejected (504) under exactly the
+ * load you were trying to survive. 45 covers the measured 24.4s with real margin while claiming
+ * far less than the 180s default. Exported so features.ts cannot drift from it (see below).
  */
-const SERVER_TIMEOUT_S = 25;
+export const SERVER_TIMEOUT_S = 45;
 
 /**
- * Per-mirror wall-clock budget (ms). This must EXCEED the real query time (~20-25s busy), or we
- * abandon a mirror that was about to answer — which is exactly the bug that made heavy scans look
- * permanently "busy" (the old 6-8s killed a 23s query every time). A truly dead mirror still
- * fails fast (connection refused / CORS error throw immediately); this budget only governs a
- * mirror that accepted the request but is grinding. The caller's overall timeout (see App) caps
- * the full sequence, so a stalled lead still leaves room for one fallback attempt.
+ * Declared memory budgets (MiB). Undeclared, Overpass assumes its 512 MiB default — a large claim
+ * that is hardest to satisfy at precisely the moment the server is loaded. Declaring a realistic
+ * ceiling improves admission. Sized well above measured need: the roads query returns ~1.9MB and
+ * the scenic union ~10.5MB at 30km, and Overpass's in-memory form runs several times the JSON
+ * output, so these leave multiples of headroom while still halving (or better) the default claim.
  */
-const PER_MIRROR_TIMEOUT_MS = 26000;
+export const MAXSIZE_ROADS_MIB = 128;
+export const MAXSIZE_FEATURES_MIB = 256;
+
+/** Build the `[out:json][timeout:][maxsize:]` settings prefix shared by every query we send. */
+export function overpassSettings(maxsizeMiB: number): string {
+  return `[out:json][timeout:${SERVER_TIMEOUT_S}][maxsize:${maxsizeMiB * 1024 * 1024}]`;
+}
+
+/**
+ * Per-mirror wall-clock budget (ms). This must EXCEED the real query time, or we abandon a mirror
+ * that was about to answer — the bug that made heavy scans look permanently "busy" (6-8s killed a
+ * 23s query every time; the later 26000 still left only ~1.6s over the measured 24.4s roads query
+ * at max radius, so any load spike failed the mirror). It must also cover DOWNLOAD time, not just
+ * think time: the scenic union is ~10.5MB at 30km, and a slow connection spends real seconds there
+ * after the server has answered. A truly dead mirror still fails fast (connection refused / CORS
+ * error throw immediately); this budget only governs a mirror that accepted the request but is
+ * grinding. The caller's overall timeout (see App) caps the full sequence, so a stalled lead still
+ * leaves room for one fallback attempt.
+ */
+const PER_MIRROR_TIMEOUT_MS = 60000;
 
 export class OverpassError extends Error {
   constructor(message: string, public kind: 'timeout' | 'http' | 'network' | 'empty') {
@@ -185,7 +209,7 @@ export async function scanRoads(
 ): Promise<ScannedRoad[]> {
   const radiusM = Math.round(radiusKm * 1000);
   const query =
-    `[out:json][timeout:${SERVER_TIMEOUT_S}];` +
+    `${overpassSettings(MAXSIZE_ROADS_MIB)};` +
     `way["highway"~"^(secondary|tertiary|unclassified)$"](around:${radiusM},${center[0]},${center[1]});` +
     `out geom;`;
 
@@ -254,7 +278,7 @@ export async function scanArea(
 
   const radiusM = Math.round(radiusKm * 1000);
   const roadQuery =
-    `[out:json][timeout:${SERVER_TIMEOUT_S}];` +
+    `${overpassSettings(MAXSIZE_ROADS_MIB)};` +
     `way["highway"~"^(secondary|tertiary|unclassified)$"](around:${radiusM},${center[0]},${center[1]});` +
     `out geom;`;
 

@@ -78,7 +78,7 @@ describe('scanRoads error handling', () => {
     }) as typeof fetch;
 
     const p = scanRoads(HOME, 10, 0.1);
-    await vi.advanceTimersByTimeAsync(26000); // trip the per-mirror timeout on mirror #1
+    await vi.advanceTimersByTimeAsync(60000); // trip the per-mirror timeout on mirror #1
     const roads = await p;
     expect(calls).toBe(2); // failed over, did not give up
     expect(roads).toHaveLength(1);

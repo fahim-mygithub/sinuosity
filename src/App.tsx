@@ -538,9 +538,13 @@ export default function App() {
     if (!map || scanning) return;
     const controller = new AbortController();
     scanController.current = controller;
-    // Two Overpass queries now run in parallel (road network + scenic-feature catalog), each with
-    // its own mirror failover; a wide radius can take ~25-30s when the servers are busy.
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    // Two Overpass queries run in parallel (road network + scenic-feature catalog), each with its
+    // own mirror failover. Measured at the slider's max 30km radius: ~24s roads, ~17s scenic — and
+    // Overpass latency is near-constant dispatch overhead, not payload-driven, so a busy moment
+    // moves that by seconds, not milliseconds. This budget must cover a slow lead mirror AND one
+    // full fallback attempt, or a recoverable failover gets killed and reported as "servers busy".
+    // The user can always stop early — the Cancel button aborts the same controller.
+    const timeout = setTimeout(() => controller.abort(), 100000);
 
     setScanning(true);
     clearLayers();
