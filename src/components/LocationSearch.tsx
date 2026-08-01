@@ -106,7 +106,7 @@ export function LocationSearch({
             type="button"
             onClick={useMyLocation}
             disabled={!!busy}
-            className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 disabled:opacity-50 inline-flex items-center gap-1 py-1"
+            className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 disabled:opacity-50 inline-flex items-center gap-1 min-h-[40px] px-2 -mr-2"
           >
             <span aria-hidden>{busy === 'locate' ? '⏳' : '🎯'}</span> Use my location
           </button>
@@ -122,12 +122,12 @@ export function LocationSearch({
           placeholder="Address, town, ZIP, or landmark…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 min-w-0 bg-slate-900 border border-slate-700 focus:border-emerald-500/60 focus:outline-none rounded-lg px-3 py-2 text-[13px] text-slate-100 placeholder:text-slate-500"
+          className="flex-1 min-w-0 min-h-[44px] bg-slate-900 border border-slate-700 focus:border-emerald-500/60 focus:outline-none rounded-lg px-3 py-2 text-base md:text-[13px] text-slate-100 placeholder:text-slate-500"
         />
         <button
           type="submit"
           disabled={!!busy || !query.trim()}
-          className="shrink-0 bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-40 disabled:active:scale-100 text-slate-950 font-bold px-3.5 rounded-lg text-[13px] transition-all"
+          className="shrink-0 min-h-[44px] bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-40 disabled:active:scale-100 text-slate-950 font-bold px-4 rounded-lg text-[13px] transition-all"
         >
           {busy === 'search' ? '…' : 'Search'}
         </button>
@@ -174,7 +174,7 @@ export function LocationSearch({
           <button
             type="button"
             onClick={onSetDefault}
-            className="shrink-0 text-[10px] font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-lg transition-colors"
+            className="shrink-0 text-[11px] font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 min-h-[40px] rounded-lg transition-colors"
           >
             ★ Set default
           </button>
@@ -185,7 +185,7 @@ export function LocationSearch({
         <button
           type="button"
           onClick={onUseDefault}
-          className="text-[10px] text-slate-400 hover:text-emerald-400 underline self-start -mt-1"
+          className="text-[11px] text-slate-400 hover:text-emerald-400 underline self-start min-h-[40px] px-2 -ml-2 -mt-1 text-left"
         >
           ↺ Back to {defaultLabel}
         </button>

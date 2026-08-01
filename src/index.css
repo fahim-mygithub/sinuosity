@@ -4,7 +4,19 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { --sheet-peek: 168px; }
+:root {
+  --sheet-peek: 152px;
+  /* Live height of the floating header + status stack, measured in App.tsx. The sheet is sized
+     against it so that at `full` its top edge — which carries the pinned action bar — clears the
+     chrome instead of sliding underneath it. Falls back to a sane value before first measure. */
+  --chrome-h: 150px;
+  /* `vh` on mobile is the LARGE viewport (URL bar hidden), so a vh-sized sheet hangs behind the
+     browser toolbar; dvh tracks the visible viewport instead. */
+  --sheet-full: calc(100vh - var(--chrome-h) - 12px);
+}
+@supports (height: 100dvh) {
+  :root { --sheet-full: calc(100dvh - var(--chrome-h) - 12px); }
+}
 * { -webkit-tap-highlight-color: transparent; }
 html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; overscroll-behavior: none; }
 #map { height: 100%; width: 100%; background: #0f172a; }
@@ -23,10 +35,37 @@ input[type='range']::-webkit-slider-thumb {
 }
 input[type='range']::-moz-range-thumb { height: 26px; width: 26px; border-radius: 50%; background: #34d399; border: 3px solid #022c22; }
 
-.sheet { transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); max-height: 88vh; }
+/* The sheet is a FIXED height, not a content-derived one: the snap offsets are computed from it,
+   so a tab swapping in taller content must not move the collapsed position. Content taller than
+   the sheet scrolls inside `.sheet-body`; content shorter simply leaves the sheet part-empty. */
+.sheet {
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  height: var(--sheet-full);
+}
 .sheet.dragging { transition: none; }
 /* Only the grab handle swallows touch gestures, so inner lists stay scrollable. */
 .sheet-handle { touch-action: none; }
+/* The one scroll region in the sheet. `min-height: 0` is what lets a flex child actually shrink
+   and therefore scroll — without it the child is floored at its content height and overflows the
+   sheet instead, which is how the Scan tab's primary action ended up clipped off-screen. */
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+/* Viewport-height helpers that track the VISIBLE viewport on mobile. `vh` is the LARGE viewport
+   (URL bar hidden), so a vh-sized overlay pushes its own footer behind the browser toolbar. */
+.h-hero { height: 52vh; }
+.max-h-modal { max-height: 90vh; }
+@supports (height: 100dvh) {
+  .h-hero { height: 52dvh; }
+  .max-h-modal { max-height: 90dvh; }
+}
+@media (min-width: 640px) {
+  .max-h-modal { max-height: 85vh; }
+  @supports (height: 100dvh) { .max-h-modal { max-height: 85dvh; } }
+}
+@media (min-width: 768px) {
+  .h-hero { height: 58vh; }
+  @supports (height: 100dvh) { .h-hero { height: 58dvh; } }
+}
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .animate-fadeIn { animation: fadeIn 0.25s ease both; }
@@ -65,7 +104,6 @@ html[data-theme='light'] .app-chrome .bg-slate-950\/70 { background-color: rgba(
 html[data-theme='light'] .app-chrome .bg-slate-950\/80 { background-color: rgba(241, 245, 249, 0.88); }
 html[data-theme='light'] .app-chrome .bg-slate-900 { background-color: #ffffff; }
 html[data-theme='light'] .app-chrome .bg-slate-900\/95 { background-color: rgba(255, 255, 255, 0.95); }
-html[data-theme='light'] .app-chrome .bg-slate-900\/97 { background-color: rgba(255, 255, 255, 0.97); }
 html[data-theme='light'] .app-chrome .bg-slate-900\/60 { background-color: #f1f5f9; }
 html[data-theme='light'] .app-chrome .bg-slate-900\/40 { background-color: #f8fafc; }
 html[data-theme='light'] .app-chrome .bg-slate-800 { background-color: #e2e8f0; }

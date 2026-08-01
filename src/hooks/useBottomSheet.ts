@@ -1,44 +1,84 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-export type SheetState = 'peek' | 'full';
-const PEEK = 168;
+export type SheetState = 'peek' | 'half' | 'full';
+
+/**
+ * Visible sheet height at `peek`: the grab handle + the sheet's pinned action bar (context line +
+ * primary action). Sized so the action bar is fully on screen at the SMALLEST snap point — the
+ * point of pinning it is that it is reachable without expanding anything.
+ */
+const PEEK = 152;
+/** `half` reveals this fraction of the viewport, so the map and the list share the screen. */
+const HALF_FRACTION = 0.5;
 const MOBILE_QUERY = '(max-width: 767px)';
 const TAP_SLOP = 6; // px of movement below which a gesture counts as a tap, not a drag
 
+/** Translate offsets (px down from fully open) for each snap point. `full` is always 0. */
+export interface SnapOffsets {
+  full: number;
+  half: number;
+  peek: number;
+}
+
 /**
- * Pure snap decision used on pointer release. Extracted so it can be unit-tested directly —
- * this is exactly the logic whose old (stale-closure) version made the sheet spring back.
- *  - A tap (negligible movement) toggles the current state.
- *  - A drag commits to whichever snap point the LIVE offset is closer to.
+ * Snap offsets for a sheet of `sheetH` px in a `viewportH` px viewport.
+ *
+ * The sheet is a FIXED height (see `--sheet-full`), not a content-derived one. That is what makes
+ * these offsets stable: the old content-derived version silently changed the collapsed position
+ * whenever a tab swapped in taller content, so the sheet could sit somewhere no snap point
+ * described.
+ */
+export function snapOffsets(sheetH: number, viewportH: number): SnapOffsets {
+  const peek = Math.max(0, sheetH - PEEK);
+  // Clamped to `peek` so a short sheet in a tall viewport degrades to two distinct points rather
+  // than putting `half` BELOW `peek` (which would make dragging up shrink the sheet).
+  const half = Math.min(peek, Math.max(0, sheetH - Math.round(viewportH * HALF_FRACTION)));
+  return { full: 0, half, peek };
+}
+
+/**
+ * Pure snap decision used on pointer release. Extracted so it can be unit-tested directly.
+ *  - A tap toggles open/closed. `half` is reachable by DRAGGING only: making a tap cycle
+ *    peek → half → full would mean the handle no longer has a predictable result.
+ *  - A drag commits to whichever snap point the LIVE offset is nearest.
  */
 export function resolveSnap(opts: {
   cur: number;
-  maxT: number;
+  snaps: SnapOffsets;
   moved: number;
   state: SheetState;
   allowTap: boolean;
 }): SheetState {
-  const { cur, maxT, moved, state, allowTap } = opts;
+  const { cur, snaps, moved, state, allowTap } = opts;
   if (allowTap && moved < TAP_SLOP) return state === 'full' ? 'peek' : 'full';
-  return cur > maxT * 0.5 ? 'peek' : 'full';
+
+  let best: SheetState = 'full';
+  let bestDist = Infinity;
+  for (const s of ['full', 'half', 'peek'] as const) {
+    const d = Math.abs(cur - snaps[s]);
+    if (d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
+  }
+  return best;
 }
 
 /**
  * Bottom-sheet / docked-panel controller.
  *
- * Mobile (<768px): a draggable bottom sheet with two snap points (peek / full).
+ * Mobile (<768px): a draggable bottom sheet with three snap points (peek / half / full).
  * Desktop (>=768px): a docked, always-open side panel — no drag, no transform.
  *
- * Design that keeps it stable (these were the failure modes of the old version):
- *  - `translate` is DERIVED, never separately stored: it is the live drag offset while
- *    dragging, otherwise it falls out of (snap state × measured max). Nothing can race to
- *    overwrite it, and the collapsed position auto-tracks content-height changes.
- *  - ONE Pointer Events path (mouse + touch + pen) with pointer capture — no separate
- *    onClick fighting the drag, no per-gesture document listeners, no stale closures.
- *  - The release decision reads the LIVE dragged offset from a ref, so a drag actually
- *    sticks where you leave it.
- *  - `maxT` is measured before first paint (useLayoutEffect) and kept current by a
- *    ResizeObserver, so there is no mount flash and the peek height is always honest.
+ * Design that keeps it stable:
+ *  - `translate` is DERIVED, never separately stored: it is the live drag offset while dragging,
+ *    otherwise it falls out of (snap state × measured offsets). Nothing can race to overwrite it.
+ *  - The sheet's height is fixed in CSS, so the snap offsets do not move when tab content changes.
+ *  - ONE Pointer Events path (mouse + touch + pen) with pointer capture.
+ *  - The release decision reads the LIVE dragged offset from a ref, so a drag sticks where you
+ *    leave it.
+ *  - Offsets are measured before first paint (useLayoutEffect) and kept current by a
+ *    ResizeObserver plus visualViewport resizes (mobile URL-bar show/hide).
  */
 export function useBottomSheet() {
   const sheetRef = useRef<HTMLDivElement | null>(null);
@@ -46,21 +86,32 @@ export function useBottomSheet() {
     () => (typeof window !== 'undefined' ? window.matchMedia(MOBILE_QUERY).matches : true),
   );
   const [state, setState] = useState<SheetState>('peek');
-  const [maxT, setMaxT] = useState(0);
+  const [sheetH, setSheetH] = useState(0);
+  const [snaps, setSnaps] = useState<SnapOffsets>({ full: 0, half: 0, peek: 0 });
   const [dragOffset, setDragOffset] = useState<number | null>(null);
 
   const drag = useRef({ active: false, startY: 0, startBase: 0, cur: 0, moved: 0, pid: -1, el: null as HTMLElement | null });
 
-  // Measured collapsed offset; kept current as content height changes.
+  // Measured snap offsets; kept current as the viewport changes (rotation, URL-bar show/hide).
   useLayoutEffect(() => {
     if (!isMobile) return;
     const el = sheetRef.current;
     if (!el) return;
-    const measure = () => setMaxT(Math.max(0, el.offsetHeight - PEEK));
+    const measure = () => {
+      const h = el.offsetHeight;
+      setSheetH(h);
+      setSnaps(snapOffsets(h, window.innerHeight));
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+    };
   }, [isMobile]);
 
   // Track viewport class. On desktop the panel is docked and fully open.
@@ -73,13 +124,15 @@ export function useBottomSheet() {
   }, []);
 
   // Single source of truth for the rendered offset.
-  const translate = !isMobile ? 0 : dragOffset != null ? dragOffset : state === 'full' ? 0 : maxT;
+  const translate = !isMobile ? 0 : dragOffset != null ? dragOffset : snaps[state];
+  /** How much of the sheet is on screen right now — drives map fitBounds padding. */
+  const visiblePx = isMobile ? Math.max(0, sheetH - translate) : 0;
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!isMobile) return;
       const el = e.currentTarget as HTMLElement;
-      const base = state === 'full' ? 0 : maxT;
+      const base = snaps[state];
       drag.current = { active: true, startY: e.clientY, startBase: base, cur: base, moved: 0, pid: e.pointerId, el };
       setDragOffset(base);
       try {
@@ -88,18 +141,18 @@ export function useBottomSheet() {
         /* capture unsupported / synthetic pointer — events still reach the handle */
       }
     },
-    [isMobile, state, maxT],
+    [isMobile, state, snaps],
   );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!drag.current.active) return;
-      const next = Math.min(maxT, Math.max(0, drag.current.startBase + (e.clientY - drag.current.startY)));
+      const next = Math.min(snaps.peek, Math.max(0, drag.current.startBase + (e.clientY - drag.current.startY)));
       drag.current.cur = next;
       drag.current.moved = Math.max(drag.current.moved, Math.abs(e.clientY - drag.current.startY));
       setDragOffset(next);
     },
-    [maxT],
+    [snaps.peek],
   );
 
   const finish = useCallback(
@@ -115,17 +168,21 @@ export function useBottomSheet() {
           /* already released on pointerup */
         }
       }
-      const target = resolveSnap({ cur, maxT, moved, state, allowTap });
-      setState(target);
+      setState(resolveSnap({ cur, snaps, moved, state, allowTap }));
       setDragOffset(null);
     },
-    [maxT, state],
+    [snaps, state],
   );
 
   const onPointerUp = useCallback(() => finish(true), [finish]);
   const onPointerCancel = useCallback(() => finish(false), [finish]);
 
-  const snapTo = useCallback((s: SheetState) => setState(s), []);
+  const snapTo = useCallback(
+    (s: SheetState) => {
+      if (isMobile) setState(s);
+    },
+    [isMobile],
+  );
   const toggle = useCallback(() => setState((s) => (s === 'full' ? 'peek' : 'full')), []);
   const expand = useCallback(() => {
     if (isMobile) setState('full');
@@ -138,6 +195,7 @@ export function useBottomSheet() {
     sheetRef,
     isMobile,
     translate,
+    visiblePx,
     state,
     dragging: dragOffset != null,
     snapTo,

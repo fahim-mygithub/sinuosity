@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import { useLeafletMap } from './hooks/useLeafletMap';
 import { useBottomSheet } from './hooks/useBottomSheet';
@@ -46,6 +46,15 @@ const BIAS_ROWS: { key: keyof BiasWeights; label: string; icon: string }[] = [
 
 type Tab = 'scenic' | 'curated' | 'scanner' | 'community';
 
+/** Mode tabs, in display order. Driven off a list so the mobile (full-width, wrapped onto its own
+ *  row) and desktop (inline) layouts can't drift apart. */
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'scenic', label: 'Scenic' },
+  { id: 'curated', label: 'Curated' },
+  { id: 'scanner', label: 'Scan' },
+  { id: 'community', label: 'Community' },
+];
+
 /** Resolve a saved bias-preset id back to its preset (falls back to the first/Balanced). */
 const presetById = (id: string) => BIAS_PRESETS.find((p) => p.id === id) ?? BIAS_PRESETS[0];
 
@@ -81,6 +90,7 @@ export default function App() {
   const lastScenicFocus = useRef<HTMLElement | null>(null);
   const fittedRouteId = useRef<string | null>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
+  const topChromeRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState('Pick a scenic ride — preview the stops, then send it to Maps');
 
   // Rider preferences (units / default bias / theme), saved rides, scan history, and the settings
@@ -116,6 +126,10 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const scanController = useRef<AbortController | null>(null);
+  // Which half of the Scan tab is on screen. The setup form and the results list are both tall;
+  // stacking them in one scroll (as this used to) buries the results under the whole form on a
+  // phone. Only meaningful once a scan has produced rides — see `showScanResults`.
+  const [scanView, setScanView] = useState<'setup' | 'results'>('setup');
 
   // Community tab: the public gallery, the rider's own published rides (route id → public id), and
   // their 👍 likes (public ride ids). `activePublic` is the gallery ride currently open in the cruise
@@ -133,7 +147,19 @@ export default function App() {
   // Latest "ring dropped at" handler, held in a ref so drawScanCircle's drag wiring never goes stale.
   const onCircleDropRef = useRef<(ll: L.LatLng) => void>(() => {});
 
-  const showToast = useCallback((m: string) => setToast(m), []);
+  // The status line is an announcement, not a permanent fixture: left up it ate ~58px of a phone
+  // screen forever. It stays in the DOM as a live region (so it is still announced) but drops out
+  // of layout once read, which hands those pixels back to the map and the sheet.
+  const [toastVisible, setToastVisible] = useState(true);
+  const showToast = useCallback((m: string) => {
+    setToast(m);
+    setToastVisible(true);
+  }, []);
+  useEffect(() => {
+    if (!toastVisible) return;
+    const t = window.setTimeout(() => setToastVisible(false), 6000);
+    return () => window.clearTimeout(t);
+  }, [toast, toastVisible]);
 
   // Apply the chosen theme to the document root so the light-mode CSS overrides engage.
   useEffect(() => { applyTheme(prefs.theme); }, [prefs.theme]);
@@ -220,15 +246,38 @@ export default function App() {
     }
   }, [scanRadius, tab]);
 
-  // fitBounds padding that keeps the drawn route clear of the panel (left dock on
-  // desktop, bottom sheet on mobile) and the floating header/status chrome.
+  // fitBounds padding that keeps the drawn route clear of the panel (left dock on desktop, bottom
+  // sheet on mobile) and the floating header/status chrome. On mobile the bottom padding tracks how
+  // much sheet is actually on screen, so a route isn't fitted underneath an expanded sheet — but it
+  // is capped, because padding approaching the viewport height leaves Leaflet no room to fit into.
+  // `visibleOverride` is for callers that are about to change the snap point in the same tick: the
+  // state has not re-rendered yet, so `sheet.visiblePx` still describes the OLD position.
   const fitOptions = useCallback(
-    (): L.FitBoundsOptions =>
-      sheet.isMobile
-        ? { paddingTopLeft: [24, 132], paddingBottomRight: [24, 320] }
-        : { paddingTopLeft: [424, 96], paddingBottomRight: [64, 48] },
-    [sheet.isMobile],
+    (visibleOverride?: number): L.FitBoundsOptions => {
+      const visible = visibleOverride ?? sheet.visiblePx;
+      return sheet.isMobile
+        ? {
+            paddingTopLeft: [24, 150],
+            paddingBottomRight: [24, Math.min(visible + 24, Math.round(window.innerHeight * 0.45))],
+          }
+        : { paddingTopLeft: [424, 96], paddingBottomRight: [64, 48] };
+    },
+    [sheet.isMobile, sheet.visiblePx],
   );
+
+  // Publish the floating chrome's live height so the sheet can size itself to clear it. The chrome
+  // is not a fixed height: it grows with env(safe-area-inset-top), with the tab strip wrapping onto
+  // its own row below 768px, and with a long status message wrapping to two lines.
+  useLayoutEffect(() => {
+    const el = topChromeRef.current;
+    if (!el) return;
+    const publish = () =>
+      document.documentElement.style.setProperty('--chrome-h', `${Math.round(el.getBoundingClientRect().height)}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // While the full-page review is open, make everything behind it inert: removes it from the
   // tab order (focus trap) and blocks pointer interaction with the map/sheet underneath.
@@ -237,9 +286,9 @@ export default function App() {
     if (el) el.inert = reviewOpen;
   }, [reviewOpen]);
 
-  // Esc collapses the expanded mobile sheet (but not while the full-page review owns Esc).
+  // Esc collapses the raised mobile sheet (but not while the full-page review owns Esc).
   useEffect(() => {
-    if (!sheet.isMobile || sheet.state !== 'full' || reviewOpen) return;
+    if (!sheet.isMobile || sheet.state === 'peek' || reviewOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') sheet.collapse(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -555,9 +604,15 @@ export default function App() {
       setAreaScan(scan);
       const rides = rebuildRides(scan, bias, loopMode, pavedOnly);
       if (rides.length) {
+        // Show the rides, and raise the sheet to `half` so the list and the drawn routes are both
+        // on screen — the results are the point of the scan, not a footnote under the form.
+        setScanView('results');
+        sheet.snapTo('half');
         const b = L.latLngBounds(rides.flatMap((r) => routeBoundsCoords(r).map((c) => L.latLng(c[0], c[1]))));
-        if (b.isValid()) map.fitBounds(b, fitOptions());
+        if (b.isValid()) map.fitBounds(b, fitOptions(Math.round(window.innerHeight * 0.5)));
         recordScan(rides); // log this scan to history (local + cloud when signed in)
+      } else {
+        setScanView('setup');
       }
       showToast(
         rides.length
@@ -606,6 +661,7 @@ export default function App() {
     setReviewOpen(false);
     setActiveStopIdx(null);
     if (t === 'scanner' && map) {
+      setScanView(scanRides.length ? 'results' : 'setup'); // coming back to a finished scan shows its rides
       clearLayers();
       drawScanCircle(scanCenterLatLng);
       if (scanRides.length) drawRides(scanRides);
@@ -629,49 +685,100 @@ export default function App() {
       ? 'Hand-picked classics · road-snapped · measured curvature · tap to review'
       : 'Agent-generated · scenery-scored · judge-ranked · tap to review';
 
+  // Scan tab: once a scan lands, its rides REPLACE the setup form rather than sitting below it.
+  const showScanResults = tab === 'scanner' && scanRides.length > 0 && scanView === 'results';
+
+  // The Scan tab's primary action. On mobile it is pinned to the bottom of the sheet so it is
+  // reachable at every snap point; on desktop it stays in the form's normal flow.
+  const scanAction = (
+    <button
+      onClick={runScan}
+      disabled={scanning}
+      className="w-full bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-50 disabled:active:scale-100 text-slate-950 font-bold min-h-[48px] rounded-xl text-sm shadow-lg transition-all"
+    >
+      {scanning ? 'Building rides…' : scanRides.length ? 'Rescan this area' : 'Scan & build rides'}
+    </button>
+  );
+  // The Scan tab's pinned bar: where the scan is centred, how wide, and the action. It sits in the
+  // sheet's TOP region (see below) so it is on screen at every snap point, peek included.
+  const mobileAction =
+    sheet.isMobile && tab === 'scanner' ? (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 text-[11px] min-w-0">
+          <span className="shrink-0" aria-hidden>📍</span>
+          <span className="truncate font-semibold text-slate-200">{scanCenter.label}</span>
+          <span className="ml-auto shrink-0 font-mono font-bold text-emerald-400">
+            {Math.round(toUnits(scanRadius, units))} {distanceLabel(units)}
+          </span>
+        </div>
+        {scanAction}
+      </div>
+    ) : null;
+
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950 text-slate-100">
       <div ref={chromeRef} className="app-chrome" style={{ display: 'contents' }}>
       <div id="map" className="absolute inset-0 z-0" />
 
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-[1200] p-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
-        <div className="max-w-2xl mx-auto bg-slate-900/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex justify-between items-center">
-          <div className="min-w-0">
+      {/* Top chrome: header + status stacked in ONE flow container. They used to be two absolutely
+          positioned boxes, the status pinned at a hardcoded `top-24` — so the moment the header grew
+          (safe-area inset on a notched phone, or the tab row wrapping) the status slid underneath it.
+          `pointer-events-none` on the stack keeps the map draggable in the gaps between the cards. */}
+      <div
+        ref={topChromeRef}
+        className="absolute top-0 left-0 right-0 z-[1200] p-3 flex flex-col gap-2 pointer-events-none"
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+      >
+        {/* Mobile: wordmark + gear on one row, full-width tab strip wrapped onto the next (the four
+            labels cannot fit beside the wordmark at 360–390px). Desktop: all three inline. */}
+        <div className="pointer-events-auto w-full max-w-2xl mx-auto bg-slate-900/95 backdrop-blur-md px-3 py-2.5 md:px-4 md:py-3 rounded-2xl shadow-2xl border border-slate-800 flex flex-wrap items-center gap-2">
+          <div className="order-1 min-w-0 flex-1">
             <h1 className="text-sm font-black tracking-tight text-white flex items-center gap-1.5">
               SINUOSITY <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold uppercase">Beta</span>
             </h1>
             <p className="text-[10px] text-slate-400 mt-0.5 truncate">Twisty + scenic backroads · scout anywhere</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div role="tablist" aria-label="Ride finder mode" className="flex items-center gap-0.5 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
-              <button role="tab" aria-selected={tab === 'scenic'} onClick={() => switchTab('scenic')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'scenic' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scenic</button>
-              <button role="tab" aria-selected={tab === 'curated'} onClick={() => switchTab('curated')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'curated' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Curated</button>
-              <button role="tab" aria-selected={tab === 'scanner'} onClick={() => switchTab('scanner')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'scanner' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Scan</button>
-              <button role="tab" aria-selected={tab === 'community'} onClick={() => switchTab('community')} className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all ${tab === 'community' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}>Community</button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Settings"
-              title="Settings"
-              className="relative h-9 w-9 grid place-items-center rounded-xl bg-slate-950/60 border border-slate-800 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/40 transition-colors"
-            >
-              <span className="text-base" aria-hidden>⚙️</span>
-              {saved.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 grid place-items-center rounded-full bg-emerald-500 text-slate-950 text-[9px] font-black" aria-hidden>
-                  {saved.length}
-                </span>
-              )}
-            </button>
+          <div role="tablist" aria-label="Ride finder mode" className="order-3 md:order-2 w-full md:w-auto flex items-center gap-0.5 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => switchTab(t.id)}
+                className={`flex-1 md:flex-none min-h-[44px] px-2 md:px-3 rounded-lg text-[11px] font-bold transition-all ${tab === t.id ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+            title="Settings"
+            className="order-2 md:order-3 relative h-11 w-11 shrink-0 grid place-items-center rounded-xl bg-slate-950/60 border border-slate-800 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/40 transition-colors"
+          >
+            <span className="text-base" aria-hidden>⚙️</span>
+            {saved.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 grid place-items-center rounded-full bg-emerald-500 text-slate-950 text-[9px] font-black" aria-hidden>
+                {saved.length}
+              </span>
+            )}
+          </button>
         </div>
-      </div>
 
-      {/* Status bar */}
-      <div role="status" aria-live="polite" className="absolute top-24 left-3 right-3 z-[1200] max-w-2xl mx-auto bg-slate-900/95 border border-emerald-500/30 px-4 py-3 rounded-xl shadow-xl flex items-center gap-3">
-        <span className="text-base">🛰️</span>
-        <span className="text-xs text-slate-200 font-medium">{toast}</span>
+        <div
+          role="status"
+          aria-live="polite"
+          className={
+            toastVisible
+              ? 'pointer-events-auto w-full max-w-2xl mx-auto bg-slate-900/95 border border-emerald-500/30 px-3 py-2.5 rounded-xl shadow-xl flex items-center gap-2.5 animate-fadeIn'
+              : 'sr-only'
+          }
+        >
+          <span className="text-base shrink-0" aria-hidden>🛰️</span>
+          <span className="text-xs text-slate-200 font-medium">{toast}</span>
+        </div>
       </div>
 
       {/* Loader */}
@@ -687,7 +794,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Scrim: tap to collapse the expanded mobile sheet */}
+      {/* Scrim: tap to collapse the expanded mobile sheet. Only at `full` — at `half` the map is
+          deliberately still live so the rider can pan//drag the scan pin against visible results. */}
       {sheet.isMobile && sheet.state === 'full' && (
         <button
           aria-label="Collapse ride list"
@@ -701,7 +809,10 @@ export default function App() {
         ref={sheet.sheetRef}
         className={
           sheet.isMobile
-            ? `sheet${sheet.dragging ? ' dragging' : ''} absolute bottom-0 left-0 right-0 mx-auto max-w-2xl z-[1100] bg-slate-900/97 backdrop-blur-md rounded-t-3xl shadow-2xl border-t border-x border-slate-800 flex flex-col`
+            // `/95`, not `/97`: Tailwind's opacity scale steps by 5, so `bg-slate-900/97` generated
+            // NO rule at all and the sheet rendered with a transparent background — legible over the
+            // old dark satellite basemap, not over the light topo one.
+            ? `sheet${sheet.dragging ? ' dragging' : ''} absolute bottom-0 left-0 right-0 mx-auto max-w-2xl z-[1100] bg-slate-900/95 backdrop-blur-md rounded-t-3xl shadow-2xl border-t border-x border-slate-800 flex flex-col`
             : 'absolute left-4 top-[92px] z-[1100] w-[384px] max-h-[calc(100vh-112px)] bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-800 flex flex-col overflow-hidden'
         }
         style={sheet.isMobile ? { transform: `translateY(${sheet.translate}px)` } : undefined}
@@ -711,8 +822,8 @@ export default function App() {
         {sheet.isMobile && (
           <button
             type="button"
-            aria-label={sheet.state === 'full' ? 'Collapse ride list' : 'Expand ride list'}
-            aria-expanded={sheet.state === 'full'}
+            aria-label={sheet.state === 'peek' ? 'Expand ride list' : 'Collapse ride list'}
+            aria-expanded={sheet.state !== 'peek'}
             onPointerDown={sheet.onPointerDown}
             onPointerMove={sheet.onPointerMove}
             onPointerUp={sheet.onPointerUp}
@@ -722,17 +833,31 @@ export default function App() {
           >
             <span className="w-10 h-1.5 bg-slate-600 group-hover:bg-slate-500 rounded-full transition-colors" />
             <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">
-              {sheet.state === 'full' ? 'Tap or drag down to close' : 'Tap or drag up for rides'}
+              {sheet.state === 'peek' ? 'Tap or drag up' : 'Tap to close · drag to resize'}
             </span>
           </button>
         )}
 
+        {/* Pinned action bar. It sits in the sheet's TOP region — above the scroll, directly under
+            the handle — because the sheet's BOTTOM hangs off-screen at every snap point except
+            `full`; a bar anchored there would be invisible exactly when it is needed most. Here it
+            is on screen at peek, at half, at full, and at any scroll position. */}
+        {mobileAction && (
+          <div className="shrink-0 px-4 pb-3 border-b border-slate-800">{mobileAction}</div>
+        )}
+
+        {/* The sheet's ONE scroll region. Tab panels below must not introduce their own height caps
+            or `overflow-hidden`: doing so clipped content instead of scrolling it, which is how the
+            Scan tab's primary action ended up unreachable on a phone. */}
         <div
-          className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto custom-scrollbar flex flex-col min-h-0"
-          style={{ maxHeight: sheet.isMobile ? '80vh' : undefined, paddingTop: sheet.isMobile ? undefined : '1.1rem' }}
+          className="sheet-body px-4 custom-scrollbar flex flex-col"
+          style={{
+            paddingTop: sheet.isMobile ? (mobileAction ? '0.75rem' : undefined) : '1.1rem',
+            paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+          }}
         >
           {browsing && (
-            <div className="flex flex-col gap-3 overflow-hidden">
+            <div className="flex flex-col gap-3">
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">{browseTitle}</h2>
                 <p className="text-[10px] text-slate-400">{browseSubtitle}</p>
@@ -749,7 +874,9 @@ export default function App() {
                   <button onClick={closeReview} className="text-[11px] text-slate-400 hover:text-slate-200 py-2 px-1 shrink-0">Clear</button>
                 </div>
               )}
-              <div className="overflow-y-auto custom-scrollbar space-y-2 pr-1" style={{ maxHeight: '64vh' }}>
+              {/* No nested scroller: the sheet body is the one scroll region, so a flick anywhere in
+                  the list scrolls it instead of hitting a trapped inner box. */}
+              <div className="space-y-2">
                 {browseRoutes.map((r) => {
                   const isActive = scenicDetail?.id === r.id;
                   return (
@@ -773,11 +900,49 @@ export default function App() {
           )}
 
           {tab === 'scanner' && (
-            <div className="flex flex-col gap-3 overflow-hidden">
+            <div className="flex flex-col gap-3">
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Live ride builder</h2>
                 <p className="text-[10px] text-slate-400">Combs the radius for twisties, scenery, greenery, water &amp; notable spots — then stitches rides</p>
               </div>
+
+              {/* Setup ⇄ results. Only once there is something to switch to. */}
+              {scanRides.length > 0 && (
+                <div role="group" aria-label="Scan view" className="grid grid-cols-2 gap-0.5 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+                  <button
+                    onClick={() => setScanView('setup')}
+                    aria-pressed={scanView === 'setup'}
+                    className={`min-h-[40px] rounded-lg text-[11px] font-bold transition-all ${scanView === 'setup' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                  >
+                    Setup
+                  </button>
+                  <button
+                    onClick={() => setScanView('results')}
+                    aria-pressed={scanView === 'results'}
+                    className={`min-h-[40px] rounded-lg text-[11px] font-bold transition-all ${scanView === 'results' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                  >
+                    Rides · {scanRides.length}
+                  </button>
+                </div>
+              )}
+
+              {showScanResults ? (
+                <div className="space-y-2">
+                  {scanRides.map((r) => (
+                    <button key={r.id} onClick={(e) => selectScenic(r, e.currentTarget)} aria-current={scenicDetail?.id === r.id ? 'true' : undefined} style={{ borderColor: r.color, boxShadow: scenicDetail?.id === r.id ? `0 0 0 2px ${r.color}66` : undefined }} className={`w-full flex justify-between items-center gap-2 p-3 rounded-xl border-2 active:scale-[.99] transition-all text-left ${scenicDetail?.id === r.id ? 'bg-emerald-500/10' : 'bg-slate-900/40'}`}>
+                      <div className="min-w-0 pr-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} aria-hidden />
+                          <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {formatDistance(r.distanceKm, units)} · 🌀{r.rubric.curvature.toFixed(1)}{r.rubric.gradeDrama != null ? ` ⛰️${r.rubric.gradeDrama.toFixed(1)}` : ''} 💧{r.rubric.water.toFixed(1)} 🌲{r.rubric.greenery.toFixed(1)} 📍{r.rubric.notability.toFixed(1)}</p>
+                      </div>
+                      <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{r.score}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+              <>
               <LocationSearch
                 value={scanCenter}
                 isDefault={isScanDefault}
@@ -786,11 +951,13 @@ export default function App() {
                 onSetDefault={handleSetDefault}
                 onUseDefault={handleUseDefault}
               />
-              <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col">
-                <label htmlFor="scan-radius" className="text-[10px] font-bold text-slate-300">Search radius</label>
-                <input id="scan-radius" type="range" min={Math.round(toUnits(5, units))} max={Math.round(toUnits(30, units))} value={Math.round(toUnits(scanRadius, units))} aria-label={`Search radius in ${units === 'mi' ? 'miles' : 'kilometers'}`} aria-valuetext={`${Math.round(toUnits(scanRadius, units))} ${units === 'mi' ? 'miles' : 'kilometers'}`} onChange={(e) => setScanRadius(fromUnits(+e.target.value, units))} />
-                <div className="text-right font-mono text-emerald-400 font-bold text-sm">{Math.round(toUnits(scanRadius, units))} {distanceLabel(units)}</div>
-                <p className="text-[10px] text-slate-500 mt-1">Tip: drag the green center pin on the map to move the scan area.</p>
+              <div className="bg-slate-950/50 px-3 py-2.5 rounded-xl border border-slate-800 flex flex-col">
+                <div className="flex items-baseline justify-between gap-2">
+                  <label htmlFor="scan-radius" className="text-[11px] font-bold text-slate-300">Search radius</label>
+                  <span className="font-mono text-emerald-400 font-bold text-sm">{Math.round(toUnits(scanRadius, units))} {distanceLabel(units)}</span>
+                </div>
+                <input id="scan-radius" className="w-full" type="range" min={Math.round(toUnits(5, units))} max={Math.round(toUnits(30, units))} value={Math.round(toUnits(scanRadius, units))} aria-label={`Search radius in ${units === 'mi' ? 'miles' : 'kilometers'}`} aria-valuetext={`${Math.round(toUnits(scanRadius, units))} ${units === 'mi' ? 'miles' : 'kilometers'}`} onChange={(e) => setScanRadius(fromUnits(+e.target.value, units))} />
+                <p className="text-[10px] text-slate-500">Drag the green pin on the map to move the scan area.</p>
               </div>
 
               {/* Loop toggle — prefer round trips that return near the start. Re-ranks instantly. */}
@@ -803,7 +970,7 @@ export default function App() {
                 <span className="text-lg shrink-0" aria-hidden>🔄</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12px] font-bold text-slate-100">Loop rides</span>
-                  <span className="block text-[10px] text-slate-400 leading-snug">Round trips that come back near where you start. No loop fits? You’ll get the best there-and-back instead.</span>
+                  <span className="block text-[10px] text-slate-400 leading-snug">Round trips back near your start, else the best there-and-back.</span>
                 </span>
                 <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${loopMode ? 'bg-emerald-500' : 'bg-slate-700'}`} aria-hidden>
                   <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${loopMode ? 'translate-x-4' : ''}`} />
@@ -820,7 +987,7 @@ export default function App() {
                 <span className="text-lg shrink-0" aria-hidden>🛣️</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12px] font-bold text-slate-100">Paved roads only</span>
-                  <span className="block text-[10px] text-slate-400 leading-snug">Hide rides that use a road tagged gravel or dirt. Untagged backroads still count.</span>
+                  <span className="block text-[10px] text-slate-400 leading-snug">Hide rides using a road tagged gravel or dirt.</span>
                 </span>
                 <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${pavedOnly ? 'bg-emerald-500' : 'bg-slate-700'}`} aria-hidden>
                   <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${pavedOnly ? 'translate-x-4' : ''}`} />
@@ -832,7 +999,7 @@ export default function App() {
               <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-slate-300">What matters to you</span>
-                  <button onClick={() => setShowWeights((s) => !s)} className="text-[10px] font-bold text-emerald-400 hover:underline py-1">
+                  <button onClick={() => setShowWeights((s) => !s)} className="text-[11px] font-bold text-emerald-400 hover:underline min-h-[40px] px-2 -mr-2">
                     {showWeights ? 'Hide weights' : 'Adjust weights'}
                   </button>
                 </div>
@@ -843,13 +1010,13 @@ export default function App() {
                       onClick={() => applyPreset(p)}
                       aria-pressed={presetId === p.id}
                       title={p.hint}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${presetId === p.id ? 'bg-emerald-500 text-slate-950 border-emerald-400' : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/40'}`}
+                      className={`px-3 min-h-[40px] rounded-lg text-[11px] font-bold border transition-all ${presetId === p.id ? 'bg-emerald-500 text-slate-950 border-emerald-400' : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/40'}`}
                     >
                       {p.label}
                     </button>
                   ))}
                   {presetId === 'custom' && (
-                    <span className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Custom</span>
+                    <span className="px-3 grid place-items-center min-h-[40px] rounded-lg text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Custom</span>
                   )}
                 </div>
                 {showWeights && (
@@ -873,31 +1040,21 @@ export default function App() {
                 )}
               </div>
 
-              <button onClick={runScan} disabled={scanning} className="bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-50 disabled:active:scale-100 text-slate-950 font-bold py-3 rounded-xl text-sm shadow-lg transition-all">{scanning ? 'Building rides…' : 'Scan & build rides'}</button>
+              {/* On mobile this lives in the sheet's pinned footer instead — see `mobileAction`. */}
+              {!sheet.isMobile && scanAction}
 
-              <div className="overflow-y-auto custom-scrollbar space-y-2" style={{ maxHeight: '34vh' }}>
-                {scanRides.length === 0 ? (
-                  <p className="text-[11px] text-slate-400 italic text-center py-3">{hasScanned ? 'No rides matched here — widen the radius, lighten the bias, or try a twistier area.' : 'Catalogs real roads, water, woods, viewpoints and landmarks in your radius, then stitches rides ranked by your bias. Tap a ride — or its line on the map — for the full review.'}</p>
-                ) : (
-                  scanRides.map((r) => (
-                    <button key={r.id} onClick={(e) => selectScenic(r, e.currentTarget)} aria-current={scenicDetail?.id === r.id ? 'true' : undefined} style={{ borderColor: r.color, boxShadow: scenicDetail?.id === r.id ? `0 0 0 2px ${r.color}66` : undefined }} className={`w-full flex justify-between items-center gap-2 p-3 rounded-xl border-2 active:scale-[.99] transition-all text-left ${scenicDetail?.id === r.id ? 'bg-emerald-500/10' : 'bg-slate-900/40'}`}>
-                      <div className="min-w-0 pr-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} aria-hidden />
-                          <h4 className="font-bold text-[13px] text-slate-100 truncate">{r.name}</h4>
-                        </div>
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{r.theme} · {formatDistance(r.distanceKm, units)} · 🌀{r.rubric.curvature.toFixed(1)}{r.rubric.gradeDrama != null ? ` ⛰️${r.rubric.gradeDrama.toFixed(1)}` : ''} 💧{r.rubric.water.toFixed(1)} 🌲{r.rubric.greenery.toFixed(1)} 📍{r.rubric.notability.toFixed(1)}</p>
-                      </div>
-                      <span className="font-mono text-[13px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-lg shrink-0">{r.score}</span>
-                    </button>
-                  ))
-                )}
-              </div>
+              <p className="text-[11px] text-slate-400 italic text-center py-1">
+                {hasScanned
+                  ? 'No rides matched here — widen the radius, lighten the bias, or try a twistier area.'
+                  : 'Catalogs real roads, water, woods, viewpoints and landmarks in your radius, then stitches rides ranked by your bias. Tap a ride — or its line on the map — for the full review.'}
+              </p>
+              </>
+              )}
             </div>
           )}
 
           {tab === 'community' && (
-            <div className="flex flex-col gap-3 overflow-hidden">
+            <div className="flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Community rides</h2>
@@ -911,7 +1068,7 @@ export default function App() {
               {!signedIn && (
                 <p className="text-[10px] text-slate-400 bg-slate-950/50 border border-slate-800 rounded-lg p-2.5">Browsing is open to everyone. Sign in from <span className="font-semibold text-slate-300">Settings ⚙️</span> to publish your own rides and like others’.</p>
               )}
-              <div className="overflow-y-auto custom-scrollbar space-y-2 pr-1" style={{ maxHeight: sheet.isMobile ? '64vh' : '60vh' }}>
+              <div className="space-y-2">
                 {communityLoading ? (
                   <p className="text-[11px] text-slate-400 italic text-center py-6">Loading community rides…</p>
                 ) : communityRides.length === 0 ? (

@@ -62,7 +62,7 @@ export function SettingsMenu({
       {/* Backdrop */}
       <button aria-label="Close settings" onClick={onClose} className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm cursor-default" />
 
-      <div className="relative w-full sm:max-w-lg max-h-[90vh] sm:max-h-[85vh] bg-slate-900 sm:rounded-2xl rounded-t-3xl border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative w-full sm:max-w-lg max-h-modal bg-slate-900 sm:rounded-2xl rounded-t-3xl border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 shrink-0">
           <h2 className="text-sm font-black tracking-tight text-white flex items-center gap-2">
@@ -210,7 +210,7 @@ function AccountSection({ savedCount, historyCount }: { savedCount: number; hist
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="flex-1 min-w-0 bg-slate-900 border border-slate-700 focus:border-emerald-500/60 focus:outline-none rounded-lg px-3 py-2 text-[13px] text-slate-100 placeholder:text-slate-500"
+              className="flex-1 min-w-0 min-h-[44px] bg-slate-900 border border-slate-700 focus:border-emerald-500/60 focus:outline-none rounded-lg px-3 py-2 text-base md:text-[13px] text-slate-100 placeholder:text-slate-500"
             />
             <button
               type="submit"
@@ -301,7 +301,7 @@ function HomeSection({ home, onChangeHome }: { home: SavedLocation; onChangeHome
         <input
           type="text" inputMode="search" autoComplete="off" placeholder="Set home — address, town, ZIP…"
           value={query} onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 min-w-0 bg-slate-900 border border-slate-700 focus:border-emerald-500/60 focus:outline-none rounded-lg px-3 py-2 text-[13px] text-slate-100 placeholder:text-slate-500"
+          className="flex-1 min-w-0 min-h-[44px] bg-slate-900 border border-slate-700 focus:border-emerald-500/60 focus:outline-none rounded-lg px-3 py-2 text-base md:text-[13px] text-slate-100 placeholder:text-slate-500"
         />
         <button type="submit" disabled={!!busy || !query.trim()} className="shrink-0 bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-40 text-slate-950 font-bold px-3.5 rounded-lg text-[13px] transition-all">
           {busy === 'search' ? '…' : 'Search'}

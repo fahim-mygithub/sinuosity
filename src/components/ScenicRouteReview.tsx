@@ -145,7 +145,7 @@ export function ScenicRouteReview({
       </header>
 
       {/* Hero */}
-      <section ref={heroRef} className="relative w-full h-[52vh] md:h-[58vh] min-h-[340px] max-h-[680px] overflow-hidden">
+      <section ref={heroRef} className="relative w-full h-hero min-h-[340px] max-h-[680px] overflow-hidden">
         {hero && !heroFailed ? (
           <>
             {/* SVG path shows while the satellite tile loads (no empty dark flash). */}
