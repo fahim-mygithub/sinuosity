@@ -30,6 +30,13 @@ import { reverseGeocode } from './lib/geocode';
 import { LocationSearch } from './components/LocationSearch';
 import { ScenicRouteReview } from './components/ScenicRouteReview';
 import { SettingsMenu } from './components/SettingsMenu';
+import {
+  ReelPanel, markColor, dayAnchor, holdInstant, peakInstant, reelPool, reelShortlist,
+  toDateInput, toTimeInput, REEL_REBUILD_DEBOUNCE_MS,
+} from './components/ReelPanel';
+import { enrichMarks, type ReelOptions } from './lib/reelScore';
+import { shootWindow } from './lib/reelPlan';
+import { REEL_WEIGHTS, type CameraAim, type ReelMark, type ReelMetrics } from './lib/reelTypes';
 import { KIND_ICON } from './lib/scenicMeta';
 import type { ScenicRoute, ScenicStop } from './data/types';
 import { offsetPath, type LatLng } from './lib/geometry';
@@ -44,7 +51,7 @@ const BIAS_ROWS: { key: keyof BiasWeights; label: string; icon: string }[] = [
   { key: 'notability', label: 'Notable', icon: '📍' },
 ];
 
-type Tab = 'scenic' | 'curated' | 'scanner' | 'community';
+type Tab = 'scenic' | 'curated' | 'scanner' | 'reel' | 'community';
 
 /** Mode tabs, in display order. Driven off a list so the mobile (full-width, wrapped onto its own
  *  row) and desktop (inline) layouts can't drift apart. */
@@ -52,6 +59,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'scenic', label: 'Scenic' },
   { id: 'curated', label: 'Curated' },
   { id: 'scanner', label: 'Scan' },
+  { id: 'reel', label: 'Reel' },
   { id: 'community', label: 'Community' },
 ];
 
@@ -77,6 +85,40 @@ function returnDrawCoords(r: ScenicRoute): LatLng[] | null {
 /** All coords a ride occupies (fun road + its return leg), for fitBounds. */
 function routeBoundsCoords(r: ScenicRoute): LatLng[] {
   return r.returnCoords?.length ? [...r.coords, ...r.returnCoords] : r.coords;
+}
+
+// --- Reel tab helpers ---------------------------------------------------------------------------
+//
+// The wall-clock arithmetic (`instantFrom`, `holdInstant`, `dayAnchor`, `peakInstant`) lives in
+// ReelPanel.tsx, beside the two inputs it parses. It used to live here, untested, and that is not a
+// coincidence: this module imports Leaflet, which touches `document` at load, so nothing in it can
+// be reached by a unit test at all.
+
+/**
+ * A mark on the map is an ARROW, not a dot.
+ *
+ * Direction of travel is half of what this feature outputs — the same 400 m of road ridden the
+ * other way is a different mark, with the backdrop on the other side and the sun moved from ahead
+ * to behind — and a dot cannot say which way to ride. The glyph rotates to `travelBearingDeg`; the
+ * rank badge is outside the rotated element so it stays upright and legible at any bearing.
+ */
+function reelMarkIcon(bearingDeg: number, color: string, rank: number, active: boolean): L.DivIcon {
+  const size = active ? 40 : 32;
+  return L.divIcon({
+    className: '',
+    html:
+      `<div style="position:relative;width:${size}px;height:${size}px">` +
+      `<div style="width:100%;height:100%;transform:rotate(${bearingDeg.toFixed(1)}deg)">` +
+      `<svg viewBox="0 0 24 24" width="${size}" height="${size}">` +
+      `<circle cx="12" cy="12" r="10.5" fill="#020617" fill-opacity=".82" stroke="${color}" stroke-width="${active ? 2.6 : 1.8}"/>` +
+      `<path d="M12 4.4 L17.4 17.2 L12 14.3 L6.6 17.2 Z" fill="${color}"/>` +
+      `</svg></div>` +
+      `<div style="position:absolute;left:50%;top:100%;transform:translate(-50%,-3px);` +
+      `font:800 9px/1.3 ui-sans-serif,system-ui,sans-serif;color:#e2e8f0;background:rgba(2,6,23,.85);` +
+      `border-radius:4px;padding:0 3px">${rank}</div></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
 }
 
 export default function App() {
@@ -130,6 +172,74 @@ export default function App() {
   // stacking them in one scroll (as this used to) buries the results under the whole form on a
   // phone. Only meaningful once a scan has produced rides — see `showScanResults`.
   const [scanView, setScanView] = useState<'setup' | 'results'>('setup');
+
+  // Reel tab: the same area scan as above, asked a different question — not "is this road good?"
+  // but "is this road good at 20:15, ridden west-to-east, with the camera boom out to the right?".
+  //
+  // TWO STAGES, HELD SEPARATELY (see `reelPoolRef`): the weight-independent pool of scored windows,
+  // and the shortlist `reelShortlist` selects from it. `reelMarks` is that shortlist, exactly as
+  // selection or `enrichMarks` returned it, and it is already ranked — nothing downstream re-scores
+  // it.
+  const [reelMarks, setReelMarks] = useState<ReelMark[]>([]);
+  const [reelSelectedId, setReelSelectedId] = useState<string | null>(null);
+  const [reelRunning, setReelRunning] = useState(false);
+  const [reelRefining, setReelRefining] = useState(false);
+  const [reelHasRun, setReelHasRun] = useState(false);
+  const [reelView, setReelView] = useState<'setup' | 'shots'>('setup');
+  const [reelAim, setReelAim] = useState<CameraAim>('side');
+  const [reelWeights, setReelWeights] = useState<ReelMetrics>(REEL_WEIGHTS);
+  const [reelDate, setReelDate] = useState(() => toDateInput(new Date()));
+  // Default to the middle of tonight's best light at the rider's home, so the tab opens on a real
+  // evening rather than on whatever o'clock it happens to be when they first tap it.
+  const [reelTime, setReelTime] = useState(() =>
+    toTimeInput(peakInstant(shootWindow(dayAnchor(new Date()), [defaultLocation.lat, defaultLocation.lon]))),
+  );
+  const reelController = useRef<AbortController | null>(null);
+  const reelRefineController = useRef<AbortController | null>(null);
+  // The corpus the current marks were cut from. A ref, not state: nothing renders from it, and it
+  // is read inside a debounced rebuild that must not itself be a reason to re-render.
+  const reelScanRef = useRef<AreaScan | null>(null);
+  /**
+   * Every window of that corpus, scored in BOTH directions and not yet selected — the pool the
+   * shortlist is chosen from. Same reasoning as `reelScanRef`: nothing renders from it (only the
+   * shortlist does), and it is read inside two debounced effects that must not re-render on it.
+   *
+   * It depends on the scan, the shoot instant and the camera aim, and on NOTHING else — the weights
+   * enter only at selection. That is what lets a weight slider re-select instead of rebuilding:
+   * measured on a real 30 km Buffalo scan, 300 ms to build the pool against 12-14 ms to re-select
+   * from it.
+   */
+  const reelPoolRef = useRef<ReelMark[]>([]);
+
+  /**
+   * Drop any refinement in flight.
+   *
+   * A refinement belongs to the marks that were on screen when it started, so ANYTHING that replaces
+   * or clears those marks has to abort it first. `enrichMarks` resolves against the list it was
+   * handed, not against current state, so an unaborted one puts a stale list back — most visibly
+   * when a rebuild returns no marks at all, since then nothing else overwrites it and marks scored
+   * for a different evening simply reappear.
+   *
+   * Clearing the ref means the aborted call's own `finally` will not touch `reelRefining`, so this
+   * has to lower the flag itself.
+   */
+  const abortReelRefine = useCallback(() => {
+    reelRefineController.current?.abort();
+    reelRefineController.current = null;
+    setReelRefining(false);
+  }, []);
+
+  // Marks are cut from one corpus around one centre, so moving the centre invalidates every one of
+  // them. Declared up here because the location handlers below need it and they are defined first.
+  const clearReel = useCallback(() => {
+    abortReelRefine();
+    reelScanRef.current = null;
+    reelPoolRef.current = [];
+    setReelMarks([]);
+    setReelSelectedId(null);
+    setReelHasRun(false);
+    setReelView('setup');
+  }, [abortReelRefine]);
 
   // Community tab: the public gallery, the rider's own published rides (route id → public id), and
   // their 👍 likes (public ride ids). `activePublic` is the gallery ride currently open in the cruise
@@ -241,7 +351,7 @@ export default function App() {
   // Resize the dashed ring in place as the slider moves (no clear, no re-scan) so the on-map circle
   // always matches the "{n} km" readout. The center pin stays put.
   useEffect(() => {
-    if (tab === 'scanner') {
+    if (tab === 'scanner' || tab === 'reel') {
       scanCircleRef.current?.setRadius(scanRadius * 1000);
     }
   }, [scanRadius, tab]);
@@ -479,13 +589,14 @@ export default function App() {
     setScanRides([]);
     setAreaScan(null);
     setHasScanned(false);
+    clearReel();
     if (map) {
       clearLayers();
       drawScanCircle([loc.lat, loc.lon]);
       map.setView([loc.lat, loc.lon], 10);
     }
     showToast(`Scan centered on ${loc.label}`);
-  }, [map, clearLayers, drawScanCircle, showToast]);
+  }, [map, clearLayers, drawScanCircle, showToast, clearReel]);
 
   // Ring dropped after a freehand drag: recenter the scan there WITHOUT flying the map (the rider
   // just placed it by hand). Reset any prior results, label it with the coord immediately, then
@@ -498,6 +609,7 @@ export default function App() {
     setScanRides([]);
     setAreaScan(null);
     setHasScanned(false);
+    clearReel();
     if (map) {
       clearLayers();
       drawScanCircle([lat, lon]);
@@ -508,7 +620,7 @@ export default function App() {
         if (r?.label) setScanCenter((c) => (c.lat === lat && c.lon === lon ? { ...c, label: r.label } : c));
       })
       .catch(() => { /* keep the coord label */ });
-  }, [map, clearLayers, drawScanCircle, showToast]);
+  }, [map, clearLayers, drawScanCircle, showToast, clearReel]);
 
   useEffect(() => { onCircleDropRef.current = handleCircleDrop; }, [handleCircleDrop]);
 
@@ -640,6 +752,307 @@ export default function App() {
 
   const cancelScan = () => scanController.current?.abort();
 
+  // --- Reel tab --------------------------------------------------------------------------------
+
+  /**
+   * The instant everything Reel is scored for: the one the rider named, HELD through a half-typed
+   * one.
+   *
+   * An `<input type="date">` emits `''` while it is being edited. `instantFrom` used to fall back to
+   * `new Date()` there, so every transient empty value became a distinct instant: it cleared the
+   * rebuild debounce on its own, rescored the whole pool, and fired Open-Meteo requests for whatever
+   * o'clock it happened to be — and the rider was shown scores for an evening they never asked for.
+   * The entire category is about a specific time, so silently scoring a different one is the worst
+   * available answer.
+   *
+   * Holding returns the previous Date BY IDENTITY, which is what makes the fix complete rather than
+   * cosmetic: `reelOpts` does not re-memo, and the rebuild effect below keys on `reelAt.getTime()`,
+   * so an incomplete input does not merely score correctly — it does no work at all. The panel says
+   * which instant is in force while the pair is incomplete.
+   *
+   * Both initial values are built from `new Date()` above, so the first pass always names a real
+   * instant; the `new Date()` seed only exists to keep the ref total.
+   */
+  const heldReelAt = useRef<Date | null>(null);
+  const reelAt = useMemo(() => {
+    const held = holdInstant(heldReelAt.current ?? new Date(), reelDate, reelTime);
+    heldReelAt.current = held;
+    return held;
+  }, [reelDate, reelTime]);
+  const reelShoot = useMemo(() => shootWindow(dayAnchor(reelAt), scanCenterLatLng), [reelAt, scanCenterLatLng]);
+  const reelOpts = useMemo<ReelOptions>(
+    () => ({ at: reelAt, aim: reelAim, weights: reelWeights }),
+    [reelAt, reelAim, reelWeights],
+  );
+  // The live opts, held in a ref so the three effects below can read them without themselves being
+  // keyed on every field. Each of those effects is keyed on the ONE input it responds to: the pool
+  // rebuild on the instant and the aim, the re-selection on the weights.
+  const reelOptsRef = useRef(reelOpts);
+  useEffect(() => { reelOptsRef.current = reelOpts; }, [reelOpts]);
+
+  // `reelMarks` arrives ranked from `reelShortlist`/`enrichMarks` and is NOT re-scored here. It used
+  // to be: App applied the rider's weights with a `.map(reelComposite).sort()` over the shortlist,
+  // which re-ordered a set of marks the OLD weights had already selected. See `reelShortlist` in
+  // ReelPanel.tsx for the measurement that killed it, and the weight effect below for what replaces
+  // it.
+  const reelSelected = useMemo(
+    () => reelMarks.find((m) => m.id === reelSelectedId) ?? null,
+    [reelMarks, reelSelectedId],
+  );
+
+  const selectReelMark = useCallback((m: ReelMark | null) => {
+    setReelSelectedId(m?.id ?? null);
+    if (!m) return;
+    setReelView('shots');
+    // Tapping an arrow on the map with the sheet collapsed would otherwise open a card nobody can
+    // see. From the list the sheet is already up, so this is a no-op there.
+    if (sheet.state === 'peek') sheet.snapTo('full');
+  }, [sheet.state, sheet.snapTo]);
+
+  // Latest select handler, held in a ref so the marker wiring below never goes stale and the whole
+  // layer set does not get rebuilt every time the sheet snaps. Same idiom as onCircleDropRef.
+  const onReelSelectRef = useRef<(m: ReelMark | null) => void>(() => {});
+  useEffect(() => { onReelSelectRef.current = selectReelMark; }, [selectReelMark]);
+
+  // Each mark is drawn as the actual 400 m stretch plus an arrow at its midpoint pointing the way
+  // to ride it. The stretch matters as much as the pin: a rider needs to see which piece of road
+  // the card is talking about, not just roughly where it is.
+  const drawReelMarks = useCallback((marks: ReelMark[], selectedId: string | null) => {
+    marks.forEach((m, i) => {
+      const color = markColor(m);
+      const active = m.id === selectedId;
+      const open = () => onReelSelectRef.current(m);
+      const hit = L.polyline(m.window.pts, { color, weight: 18, opacity: 0 });
+      const line = L.polyline(m.window.pts, { color, weight: active ? 6 : 4, opacity: active ? 1 : 0.85 });
+      hit.on('click', open);
+      line.on('click', open);
+      addLayer(hit);
+      addLayer(line);
+      const arrow = L.marker(m.window.mid, {
+        icon: reelMarkIcon(m.travelBearingDeg, color, i + 1, active),
+        zIndexOffset: active ? 1000 : 0,
+      });
+      arrow.on('click', open);
+      addLayer(arrow);
+    });
+  }, [addLayer]);
+
+  // Exactly what the map draws, as a string: the marks in rank order, each with the two things the
+  // arrow encodes. Redrawing on the array's identity instead would rebuild ~120 Leaflet layers on
+  // every step of a weight or radius slider — the arrays are new objects each time even when not one
+  // arrow moved. The radius ring is exempt for the same reason and stays live through the in-place
+  // `setRadius` effect above, exactly as the Scan tab already does it.
+  const reelDrawKey = useMemo(
+    () => reelMarks.map((m) => `${m.id}:${Math.round(m.travelBearingDeg)}:${m.backdropSide ?? '-'}`).join('|'),
+    [reelMarks],
+  );
+
+  // All Reel drawing lives here rather than being scattered through the handlers, so the map is a
+  // pure function of (marks, selection) and cannot fall out of step with the list.
+  useEffect(() => {
+    if (!ready || !map || tab !== 'reel') return;
+    clearLayers();
+    drawScanCircle(scanCenterLatLng);
+    drawReelMarks(reelMarks, reelSelectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps — keyed on what is drawn, not on identity
+  }, [ready, map, tab, reelDrawKey, reelSelectedId]);
+
+  /**
+   * Stage two: refine an already-ranked shortlist with the DEM lateral fall and the built-up query.
+   *
+   * Never blocks and never invalidates stage one — `enrichMarks` degrades to returning its input if
+   * both lookups fail, so the worst case is that the list stays provisional and says so. Aborting
+   * the previous refinement matters: the built-up query is ~20-25s of near-constant Overpass
+   * dispatch overhead, so two of them overlapping would land out of order.
+   */
+  const refineReel = useCallback(async (marks: ReelMark[], scan: AreaScan, opts: ReelOptions) => {
+    reelRefineController.current?.abort();
+    const controller = new AbortController();
+    reelRefineController.current = controller;
+    setReelRefining(true);
+    try {
+      const refined = await enrichMarks(marks, scan, opts, controller.signal);
+      if (!controller.signal.aborted) setReelMarks(refined);
+    } catch {
+      // enrichMarks swallows its own failures by contract; this is only here so a future throw
+      // cannot leave the rider staring at a spinner over a list that is already perfectly usable.
+    } finally {
+      if (reelRefineController.current === controller) {
+        reelRefineController.current = null;
+        setReelRefining(false);
+      }
+    }
+  }, []);
+
+  /**
+   * Select the shortlist the rider's current weights earn from a held pool, and start its
+   * refinement. Returns the shortlist so a caller can fit the map to it.
+   *
+   * The single path from pool to screen, shared by all three things that change what is on it — the
+   * scan itself, the debounced instant/aim rebuild, and the weight sliders — so there is exactly one
+   * place that decides what a mark list is.
+   *
+   * The refinement is re-run rather than carried across a re-selection, and re-running it is nearly
+   * free: `fetchLateralFall` caches by window id and `fetchBuiltIndex` by centre+radius, so a
+   * selection that keeps the same windows costs ZERO requests. That is the same cache
+   * REEL_REBUILD_DEBOUNCE_MS's comment leans on, and it is why a weight change no longer has to
+   * choose between selecting correctly and keeping the DEM readings.
+   */
+  const applyReelPool = useCallback((pool: ReelMark[], scan: AreaScan, opts: ReelOptions) => {
+    const marks = reelShortlist(pool, opts);
+    // Before the marks are replaced, not after: the refinement in flight belongs to the OLD
+    // shortlist, and if this selection returns nothing there is no later call to abort it.
+    abortReelRefine();
+    setReelMarks(marks);
+    if (marks.length) void refineReel(marks, scan, opts);
+    return marks;
+  }, [abortReelRefine, refineReel]);
+
+  const runReel = async () => {
+    if (!map || reelRunning) return;
+    const controller = new AbortController();
+    reelController.current = controller;
+    // Same budget as runScan, and for the same reason: inside the tile corpus this is a few hundred
+    // ms, outside it the fallback is two Overpass queries with mirror failover.
+    const timeout = setTimeout(() => controller.abort(), 100000);
+
+    setReelRunning(true);
+    try {
+      const { scan } = await fetchAreaScan(scanCenterLatLng, scanRadius, controller.signal);
+      reelScanRef.current = scan;
+      const opts = reelOptsRef.current;
+      // Both halves are synchronous and network-free, so the list is on screen before the refinement
+      // is even asked for. That two-stage shape is the whole point of the category's architecture.
+      const pool = reelPool(scan, opts);
+      reelPoolRef.current = pool;
+      const marks = applyReelPool(pool, scan, opts);
+      setReelSelectedId(null);
+      if (marks.length) {
+        setReelView('shots');
+        sheet.snapTo('half');
+        const b = L.latLngBounds(marks.flatMap((m) => m.window.pts.map((p) => L.latLng(p[0], p[1]))));
+        if (b.isValid()) map.fitBounds(b, fitOptions(Math.round(window.innerHeight * 0.5)));
+      } else {
+        setReelView('setup');
+      }
+      showToast(
+        marks.length
+          ? `${marks.length} filmable stretch${marks.length === 1 ? '' : 'es'} near ${scanCenter.label} — tap one for the shoot card`
+          : 'Nothing here reads as filmable — widen the radius or try another evening',
+      );
+    } catch (e) {
+      const kind = e instanceof OverpassError ? e.kind : 'network';
+      showToast(
+        kind === 'timeout'
+          ? 'OpenStreetMap servers are busy right now — wait a moment and retry, or use a smaller radius'
+          : kind === 'http'
+            ? 'OpenStreetMap is busy — retry in a moment'
+            : 'Could not read this area — check your connection',
+      );
+      abortReelRefine();
+      reelScanRef.current = null;
+      reelPoolRef.current = [];
+      setReelMarks([]);
+    } finally {
+      clearTimeout(timeout);
+      reelController.current = null;
+      setReelRunning(false);
+      setReelHasRun(true);
+    }
+  };
+
+  const cancelReel = () => reelController.current?.abort();
+
+  // Moving the shoot instant or the camera rebuilds the POOL against the corpus already in hand — no
+  // re-query. Only these two, because they are the only inputs that change a mark's LIGHT, and light
+  // is the one dimension that depends on when the rider is there. The weights are deliberately NOT
+  // in this key: they cannot change a window's metrics at all, only which windows are selected, and
+  // that is the cheap half (see the effect below). Debounced (see REEL_REBUILD_DEBOUNCE_MS for what
+  // that does and does NOT buy) and skipped on the first run so it does not fire before any scan.
+  // `reelAt` holds the last instant the rider actually named, so a half-typed date never reaches
+  // this effect at all.
+  const firstReelBuild = useRef(true);
+  useEffect(() => {
+    if (firstReelBuild.current) { firstReelBuild.current = false; return; }
+    const scan = reelScanRef.current;
+    if (!scan) return;
+    let frame = 0;
+    const t = window.setTimeout(() => {
+      // Yield a frame first: scoring the pool is measured at ~300 ms for a whole scan and it runs on
+      // the main thread, so without this the changed control appears to swallow the input and only
+      // repaint once the work is done.
+      frame = window.requestAnimationFrame(() => {
+        const opts = reelOptsRef.current;
+        const pool = reelPool(scan, opts);
+        reelPoolRef.current = pool;
+        applyReelPool(pool, scan, opts);
+      });
+    }, REEL_REBUILD_DEBOUNCE_MS);
+    return () => { window.clearTimeout(t); window.cancelAnimationFrame(frame); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps — intentionally keyed on the shoot instant + aim
+  }, [reelAt.getTime(), reelAim]);
+
+  /**
+   * Moving a weight slider RE-SELECTS from the held pool. It must never re-sort the shortlist.
+   *
+   * This is the whole reason the pool is held. Both non-max suppression and the mark limit consume
+   * `mark.score`, so the weights in force decide WHICH ~40 of a scan's ~1,400 windows survive, not
+   * merely what order they come back in — reelScore.ts says so in as many words. App used to
+   * `.map(reelComposite).sort()` the shortlist instead, and measured on the real corpus with drama
+   * weighted to 1 and everything else 0 that left 37 of the 40 correct marks unreachable: the top-5
+   * drama read 10, 10, 10, 8.6, 6.5 against a true 10, 10, 10, 10, 10.
+   *
+   * Nothing is re-scored from the road geometry here — the pool is weight-independent by
+   * construction, so this is the 12-14 ms half rather than the 300 ms one, and it needs no frame
+   * yield.
+   *
+   * Debounced on the same timer as the rebuild above for a plainer reason than that one has: a
+   * dragged `<input type="range">` emits a change per pointer move, and 12-14 ms of selection at
+   * that rate is most of a frame budget spent re-ranking a list the rider has not stopped moving.
+   *
+   * TWO CONSEQUENCES A READER SHOULD EXPECT, both of them the honest behaviour rather than bugs.
+   * A mark the new weights do not select is genuinely no longer in the shortlist, so an open shoot
+   * card for it closes back to the list — `reelSelected` resolves against `reelMarks`. And if a
+   * weight moves and then the shoot instant moves inside the same 700 ms, this fires first against a
+   * pool still scored for the previous instant; the rebuild above lands right behind it and replaces
+   * both. What is on screen in between is what was already on screen, re-selected.
+   */
+  const firstReelSelect = useRef(true);
+  useEffect(() => {
+    if (firstReelSelect.current) { firstReelSelect.current = false; return; }
+    const scan = reelScanRef.current;
+    if (!scan || !reelPoolRef.current.length) return;
+    const t = window.setTimeout(() => {
+      applyReelPool(reelPoolRef.current, scan, reelOptsRef.current);
+    }, REEL_REBUILD_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [reelWeights, applyReelPool]);
+
+  // A dropped tab or a closed page should not leave an Overpass query and a DEM batch running.
+  useEffect(() => () => {
+    reelController.current?.abort();
+    reelRefineController.current?.abort();
+  }, []);
+
+  const setReelWeight = (k: keyof ReelMetrics, v: number) =>
+    setReelWeights((prev) => ({ ...prev, [k]: v }));
+
+  // Snap the shoot time to the middle of the evening's best light for the date already chosen. The
+  // peak can land on the next local day at extreme longitudes, so the date moves with it.
+  const useReelPeakLight = () => {
+    const peak = peakInstant(reelShoot);
+    setReelDate(toDateInput(peak));
+    setReelTime(toTimeInput(peak));
+  };
+
+  const locateReelMark = useCallback((m: ReelMark) => {
+    if (!map) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) map.setView(m.window.mid, 15);
+    else map.flyTo(m.window.mid, 15, { duration: 0.8 });
+    showToast(`Showing ${m.roadName || 'this stretch'} on the map`);
+  }, [map, showToast]);
+
   // Nudging a bias slider / preset re-ranks the SAME corpus instantly (no re-query). Skip the very
   // first run so this doesn't fire before any scan exists.
   const firstBias = useRef(true);
@@ -666,6 +1079,11 @@ export default function App() {
       drawScanCircle(scanCenterLatLng);
       if (scanRides.length) drawRides(scanRides);
       map.setView(scanCenterLatLng, 10);
+    } else if (t === 'reel' && map) {
+      // Only the view; the marks and the ring are drawn by the Reel effect, which owns that map
+      // state outright so the arrows can never disagree with the list.
+      setReelSelectedId(null);
+      map.setView(scanCenterLatLng, 10);
     } else if (t === 'community') {
       setActivePublic(null);
       void loadCommunity(communitySort);
@@ -688,6 +1106,18 @@ export default function App() {
   // Scan tab: once a scan lands, its rides REPLACE the setup form rather than sitting below it.
   const showScanResults = tab === 'scanner' && scanRides.length > 0 && scanView === 'results';
 
+  // The Reel tab's primary action, shaped exactly like `scanAction` so the pinned mobile bar can
+  // carry either one without knowing which tab it is on.
+  const reelAction = (
+    <button
+      onClick={runReel}
+      disabled={reelRunning}
+      className="w-full bg-emerald-500 active:bg-emerald-600 active:scale-[.98] disabled:opacity-50 disabled:active:scale-100 text-slate-950 font-bold min-h-[48px] rounded-xl text-sm shadow-lg transition-all"
+    >
+      {reelRunning ? 'Reading the roads…' : reelMarks.length ? 'Find shots again' : 'Find the shots'}
+    </button>
+  );
+
   // The Scan tab's primary action. On mobile it is pinned to the bottom of the sheet so it is
   // reachable at every snap point; on desktop it stays in the form's normal flow.
   const scanAction = (
@@ -702,7 +1132,7 @@ export default function App() {
   // The Scan tab's pinned bar: where the scan is centred, how wide, and the action. It sits in the
   // sheet's TOP region (see below) so it is on screen at every snap point, peek included.
   const mobileAction =
-    sheet.isMobile && tab === 'scanner' ? (
+    sheet.isMobile && (tab === 'scanner' || tab === 'reel') ? (
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-[11px] min-w-0">
           <span className="shrink-0" aria-hidden>📍</span>
@@ -711,7 +1141,7 @@ export default function App() {
             {Math.round(toUnits(scanRadius, units))} {distanceLabel(units)}
           </span>
         </div>
-        {scanAction}
+        {tab === 'scanner' ? scanAction : reelAction}
       </div>
     ) : null;
 
@@ -745,7 +1175,9 @@ export default function App() {
                 role="tab"
                 aria-selected={tab === t.id}
                 onClick={() => switchTab(t.id)}
-                className={`flex-1 md:flex-none min-h-[44px] px-2 md:px-3 rounded-lg text-[11px] font-bold transition-all ${tab === t.id ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                // Mobile padding and type step down at five tabs: at 360px the strip has ~59px per
+                // tab, and "Community" needs every one of them. Desktop is unchanged.
+                className={`flex-1 md:flex-none min-h-[44px] px-0.5 md:px-3 rounded-lg text-[10px] md:text-[11px] leading-tight font-bold transition-all ${tab === t.id ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
               >
                 {t.label}
               </button>
@@ -781,8 +1213,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* Loader */}
-      {scanning && (
+      {/* Loader. Only the corpus fetch blocks — the Reel refinement deliberately does not, and
+          shows itself as a quiet note beside the list instead. */}
+      {(scanning || reelRunning) && (
         <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-[1300] flex flex-col justify-center items-center gap-4">
           <div className="relative w-14 h-14">
             <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20" />
@@ -790,7 +1223,7 @@ export default function App() {
           </div>
           <p className="text-sm font-semibold text-slate-200">Querying OpenStreetMap…</p>
           <p className="text-[11px] text-slate-400 -mt-2">Can take 20–30s when the map servers are busy</p>
-          <button onClick={cancelScan} className="text-xs text-slate-400 hover:text-emerald-400 underline font-medium py-2 px-3">Cancel</button>
+          <button onClick={reelRunning ? cancelReel : cancelScan} className="text-xs text-slate-400 hover:text-emerald-400 underline font-medium py-2 px-3">Cancel</button>
         </div>
       )}
 
@@ -1053,6 +1486,42 @@ export default function App() {
             </div>
           )}
 
+          {tab === 'reel' && (
+            <ReelPanel
+              center={scanCenter}
+              isDefaultCenter={isScanDefault}
+              defaultLabel={defaultLocation.label}
+              onRecenter={recenterScan}
+              onSetDefault={handleSetDefault}
+              onUseDefault={handleUseDefault}
+              radiusKm={scanRadius}
+              onRadiusChange={setScanRadius}
+              units={units}
+              date={reelDate}
+              time={reelTime}
+              onDateChange={setReelDate}
+              onTimeChange={setReelTime}
+              shoot={reelShoot}
+              onUsePeakLight={useReelPeakLight}
+              aim={reelAim}
+              onAimChange={setReelAim}
+              weights={reelWeights}
+              onWeightChange={setReelWeight}
+              onResetWeights={() => setReelWeights(REEL_WEIGHTS)}
+              marks={reelMarks}
+              at={reelAt}
+              selected={reelSelected}
+              onSelect={selectReelMark}
+              onLocate={locateReelMark}
+              refining={reelRefining}
+              hasRun={reelHasRun}
+              view={reelView}
+              onViewChange={setReelView}
+              action={reelAction}
+              showAction={!sheet.isMobile}
+            />
+          )}
+
           {tab === 'community' && (
             <div className="flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
@@ -1129,7 +1598,7 @@ export default function App() {
             route={scenicDetail}
             onBack={closeReview}
             onLocate={locateStop}
-            origin={tab === 'scanner' ? scanCenterLatLng : homeCenter}
+            origin={tab === 'scanner' || tab === 'reel' ? scanCenterLatLng : homeCenter}
             units={units}
             isSaved={savedIds.has(scenicDetail.id)}
             onToggleSave={() => toggleSaveRoute(scenicDetail)}
