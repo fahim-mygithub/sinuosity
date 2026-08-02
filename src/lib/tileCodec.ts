@@ -11,6 +11,31 @@
 
 import type { LatLng } from './geometry';
 
+/**
+ * Version of the wire format described below. scripts/build-tiles.mjs stamps this number into every
+ * tile and into the manifest; the reader (tileSource.ts) checks it before decoding anything.
+ *
+ * Bumping it is what invalidates a stale cache, and the reason the guard exists at all is that the
+ * failure without it is invisible. Tiles are ordinary static files on GitHub Pages, so a browser can
+ * hold one from the previous corpus indefinitely. Decoded against a reader whose fields have since
+ * moved, it reaches `decodePath(undefined)` and throws a TypeError three frames deep, which
+ * areaSource.ts's blanket catch turns into a permanent fallback to Overpass: every scan for the rest
+ * of the session takes ~25 s instead of ~1 s, with a single console.warn to show for it. A version
+ * mismatch has to fail ON the version, where the message can say so.
+ *
+ * Bump this for any change that makes an old tile undecodable — a renamed or removed field, a
+ * different encoding, a changed array pairing. Adding a field the reader already treats as optional
+ * does not need a bump; removing one always does.
+ *
+ * The writer's half of that failure is symmetric and was live until 2026-08-02: build-tiles.mjs used
+ * to stamp the literal `1` into each tile and the manifest, so bumping this constant alone would
+ * have branded a freshly rebuilt corpus with the OLD version and made every scan in the app fall
+ * back. It now imports scripts/lib/tile-codec.mjs's TILE_FORMAT_V, and since Node cannot import this
+ * TS module, src/lib/tileSource.test.ts reads that file from disk and asserts the two numbers agree.
+ * Bump BOTH, or that test goes red.
+ */
+export const TILE_FORMAT_V = 1;
+
 /** Quantization step in degrees (~1.1 m at NY latitudes). Matches elevation.ts's round5, and is far
  *  finer than the curvature metrics can resolve — sinuosityScore works on segments of 100s of m. */
 export const QUANT = 1e-5;

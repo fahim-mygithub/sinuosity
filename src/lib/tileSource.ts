@@ -11,7 +11,7 @@ import type { ScannedRoad, ScoredRoad, ScenicRubric } from '../data/types';
 import type { ScenicPOI } from './features';
 import type { RubricTells } from './sceneryTells';
 import { enrichElevation, type AreaScan } from './overpass';
-import { decodePath, tileKey, tilesForBounds, tilesForRadius, TILE_DEG } from './tileCodec';
+import { decodePath, tileKey, tilesForBounds, tilesForRadius, TILE_DEG, TILE_FORMAT_V } from './tileCodec';
 
 /**
  * Bounding rectangle of the build grid. Only a cheap pre-filter: actual coverage is the New York
@@ -51,6 +51,13 @@ async function loadManifest(signal?: AbortSignal): Promise<Set<string>> {
       const res = await fetch(`${TILE_BASE}manifest.json`, { signal });
       if (!res.ok) throw new TileMissError(`manifest: HTTP ${res.status}`);
       const m = (await res.json()) as Manifest;
+      // Version before shape: a manifest from another format version may legitimately not have a
+      // `tiles` array at all, and "malformed" would then be a misleading way to report "stale".
+      if (m.v !== TILE_FORMAT_V) {
+        throw new TileMissError(
+          `manifest: wire format v${m.v ?? '(missing)'}, this build reads v${TILE_FORMAT_V} — stale cached corpus`,
+        );
+      }
       if (!Array.isArray(m.tiles)) throw new TileMissError('manifest: malformed');
       return new Set(m.tiles);
     })().catch((e) => {
@@ -172,9 +179,21 @@ export async function scanAreaFromTiles(
 
   const present = await Promise.all(
     keys.map(async ([a, b]) => {
-      const res = await fetch(`${TILE_BASE}${tileKey(a, b)}.json`, { signal });
-      if (!res.ok) throw new TileMissError(`tile ${tileKey(a, b)}: HTTP ${res.status}`);
-      return decodeTile((await res.json()) as WireTile);
+      const key = tileKey(a, b);
+      const res = await fetch(`${TILE_BASE}${key}.json`, { signal });
+      if (!res.ok) throw new TileMissError(`tile ${key}: HTTP ${res.status}`);
+      const t = (await res.json()) as WireTile;
+      // The manifest being current does not make a cached TILE current — they are separate static
+      // files with separate cache lifetimes, so the browser can hold a fresh manifest alongside a
+      // stale tile. Checked here rather than inside decodeTile so the throw happens before the
+      // payload is touched: an old tile decoded by a newer reader dies on `decodePath(undefined)`,
+      // and a TypeError names neither the tile nor the reason.
+      if (t.v !== TILE_FORMAT_V) {
+        throw new TileMissError(
+          `tile ${key}: wire format v${t.v ?? '(missing)'}, this build reads v${TILE_FORMAT_V} — stale cached tile`,
+        );
+      }
+      return decodeTile(t);
     }),
   );
 

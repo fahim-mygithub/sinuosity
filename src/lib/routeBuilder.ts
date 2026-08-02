@@ -1,5 +1,5 @@
 import { haversine, pathLength, cleanCoords, flowCurvature, bearing, dropBacktracks, type LatLng } from './geometry';
-import { measureRubric, pointInRing, anyWithinM, OPEN_WATER_W, MINOR_WATER_W, type RubricTells, type WeightedTell } from './sceneryTells';
+import { measureRubric, pointInRing, anyWithinM, waterSplit, type RubricTells } from './sceneryTells';
 import { compositeScore, type BiasWeights } from './composite';
 import { getReturnGraph, findReturnPath, type ReturnGraph } from './returnPath';
 import type { FeatureCatalog, ScenicPOI } from './features';
@@ -529,28 +529,13 @@ const WOODED_CONTAIN = 0.35; // road inside tree cover for ≥ this fraction →
  * water *rubric* fires on any water within 500 m, so a suburban arterial that crosses a creek or
  * runs behind riverfront houses scores high — but only a genuinely shore-hugging road has a high
  * shoreline fraction. We label "Shoreline" only when this is real, and "Creekside" otherwise.
- */
-/**
- * Open-water and minor-watercourse subsets of a scan's water tells, cached per `waterPts` array.
  *
- * Splitting them per call allocated a fresh array every time — which, besides the copy itself,
- * defeated the spatial index in sceneryTells (it caches per array IDENTITY, so a new array each
- * call meant a fresh grid each call). A scan's waterPts array is stable for the life of the scan,
- * so keying on it is safe and makes both the split and the index one-time costs.
+ * The split comes from sceneryTells' shared {@link waterSplit}, NOT from a local filter. This file
+ * used to keep its own cached copy of the same two filters; `measureRubric` then grew one too, so a
+ * scan cut two `open` arrays out of the same ~18,500-point water array — and since the spatial index
+ * is keyed on array IDENTITY, that is two grids over identical data. Same predicates, so scan results
+ * are unchanged; the bucket this file called `creeks` is the shared one called `minor`.
  */
-const waterSplitCache = new WeakMap<WeightedTell[], { open: WeightedTell[]; creeks: WeightedTell[] }>();
-function waterSplit(waterPts: WeightedTell[]): { open: WeightedTell[]; creeks: WeightedTell[] } {
-  let split = waterSplitCache.get(waterPts);
-  if (!split) {
-    split = {
-      open: waterPts.filter((t) => t.w >= OPEN_WATER_W),
-      creeks: waterPts.filter((t) => t.w >= MINOR_WATER_W && t.w < OPEN_WATER_W),
-    };
-    waterSplitCache.set(waterPts, split);
-  }
-  return split;
-}
-
 function shorelineFraction(coords: LatLng[], tells: RubricTells): number {
   const { open } = waterSplit(tells.waterPts);
   if (!open.length && !tells.waterAreas.length) return 0;
@@ -571,7 +556,7 @@ function shorelineFraction(coords: LatLng[], tells: RubricTells): number {
  * lake/canal alongside is a Shoreline (see {@link shorelineFraction}), not a Creekside.
  */
 function creekFraction(coords: LatLng[], tells: RubricTells): number {
-  const { creeks } = waterSplit(tells.waterPts);
+  const { minor: creeks } = waterSplit(tells.waterPts);
   if (!creeks.length) return 0;
   let hits = 0;
   for (const c of coords) if (anyWithinM(creeks, c, CREEK_NEAR_M)) hits++;

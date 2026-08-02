@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildRides, synthesizeStops, rideabilityFactor } from './routeBuilder';
 import { COMPOSITE_WEIGHTS, compositeScore } from './composite';
+import { waterSplit, OPEN_WATER_W, MINOR_WATER_W, type WeightedTell } from './sceneryTells';
 import { haversine, type LatLng } from './geometry';
 import type { ScannedRoad, ScoredRoad, ScenicRubric, ScenicStop } from '../data/types';
 import type { FeatureCatalog, ScenicPOI } from './features';
@@ -183,6 +184,66 @@ describe('honesty pass — water is sold only when you can see/ride it', () => {
     expect(r.theme).not.toBe('Creekside');
     expect(r.name).not.toContain('Creek');
     expect(r.name).not.toContain('Shoreline');
+  });
+});
+
+/**
+ * Record every array cut out of `arr` by `.filter`, by shadowing the method on that ONE array
+ * instance (the prototype is untouched, so nothing else in the process is affected).
+ *
+ * A scan's water tells are split into open water and minor watercourses with two `.filter` calls,
+ * and the spatial index in sceneryTells is keyed on ARRAY IDENTITY — so each derived array is one
+ * grid over ~18,500 points. Counting the derived arrays counts the grids.
+ */
+function recordSplits(arr: WeightedTell[]): WeightedTell[][] {
+  const derived: WeightedTell[][] = [];
+  Object.defineProperty(arr, 'filter', {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: (pred: (t: WeightedTell, i: number, a: WeightedTell[]) => boolean): WeightedTell[] => {
+      const out = Array.prototype.filter.call(arr, pred) as WeightedTell[];
+      derived.push(out);
+      return out;
+    },
+  });
+  return derived;
+}
+
+describe('one split of the scan water, not two', () => {
+  it('measures shoreline/creek through the SHARED waterSplit, so a scan indexes its water once', () => {
+    // routeBuilder used to keep a private `waterSplit` (open/`creeks`) alongside sceneryTells' own
+    // (open/`minor`) over the SAME waterPts array. The predicates were identical — this migration
+    // changes no score — but the derived arrays were not, so one scan built TWO grids over the same
+    // water: exactly the duplication the shared export was created to prevent, one level up.
+    //
+    // Nothing in the output can see the difference, so the witness is how many arrays the scan cuts
+    // from its water. Two (open + minor). Before this fix, four.
+    const cat = waterCatalog(0.0007, 0.8);
+    const derived = recordSplits(cat.tells.waterPts);
+
+    const [r] = buildRides(flatPair(), cat, { bias: COMPOSITE_WEIGHTS, minKm: 1 });
+    expect(r.theme).toBe('Shoreline'); // the water paths really did run
+
+    expect(derived).toHaveLength(2);
+    const { open, minor } = waterSplit(cat.tells.waterPts);
+    expect(derived).toContain(open);
+    expect(derived).toContain(minor);
+  });
+
+  it('keeps the creek bucket on the same predicate the private copy used', () => {
+    // The private bucket was called `creeks` and the shared one is called `minor`; the rename is
+    // only safe because the predicate is identical (MINOR_WATER_W <= w < OPEN_WATER_W). Pinned on
+    // the boundary weights, because a shifted bucket would silently relabel Creekside rides.
+    const boundary: WeightedTell[] = [
+      { pt: [42.7, -78.9], w: OPEN_WATER_W },
+      { pt: [42.7, -78.89], w: OPEN_WATER_W - 1e-9 },
+      { pt: [42.7, -78.88], w: MINOR_WATER_W },
+      { pt: [42.7, -78.87], w: MINOR_WATER_W - 1e-9 },
+    ];
+    const { open, minor } = waterSplit(boundary);
+    expect(open).toEqual([boundary[0]]);
+    expect(minor).toEqual([boundary[1], boundary[2]]);
   });
 });
 

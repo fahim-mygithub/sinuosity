@@ -33,7 +33,7 @@
 import { writeFileSync, existsSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { encodePath, decodePath, tileIndex, tileKey, tileBounds, TILE_DEG, MARGIN_KM } from './lib/tile-codec.mjs';
+import { encodePath, decodePath, tileIndex, tileKey, tileBounds, TILE_DEG, MARGIN_KM, TILE_FORMAT_V } from './lib/tile-codec.mjs';
 import { categorizeFeatures } from './lib/feature-catalog.mjs';
 import { measureRubric } from './lib/scenery-tells.mjs';
 import { sinuosityScore, flowCurvature, pathLengthKm, haversineM } from './lib/scenic-metrics.mjs';
@@ -266,7 +266,9 @@ async function buildTile(latIdx, lonIdx, opts) {
   };
 
   const tile = {
-    v: 1,
+    // Never a literal: the reader rejects any tile whose stamp is not its own TILE_FORMAT_V, so a
+    // hardcoded version here turns a forgotten edit into a permanent Overpass fallback app-wide.
+    v: TILE_FORMAT_V,
     bbox: [s, w, n, e],
     roads,
     tells: {
@@ -332,7 +334,7 @@ function writeManifest() {
     .sort();
   writeFileSync(
     `${OUT_DIR}manifest.json`,
-    JSON.stringify({ v: 1, tileDeg: TILE_DEG, marginKm: MARGIN_KM, tiles }),
+    JSON.stringify({ v: TILE_FORMAT_V, tileDeg: TILE_DEG, marginKm: MARGIN_KM, tiles }),
   );
   return tiles.length;
 }

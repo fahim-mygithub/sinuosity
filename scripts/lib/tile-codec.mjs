@@ -9,6 +9,23 @@
 // the same Node-cannot-import-TS reason; this follows that convention but adds the parity guard,
 // because a wire format desyncs far more destructively than a metric does.)
 
+/**
+ * Wire format version stamped into every tile and into manifest.json. Twin of tileCodec.ts's
+ * TILE_FORMAT_V; see there for what warrants a bump.
+ *
+ * It lives HERE, next to the encoder, rather than as a literal in build-tiles.mjs, because the
+ * writer and the reader fail symmetrically. The reader rejecting a stale tile is the bug the guard
+ * was written for; the WRITER stamping a stale number is just as bad and less visible — bump the TS
+ * constant for a real format change, miss the script, rebuild, and every tile ships branded with the
+ * old version, so every scan throws TileMissError, areaSource.ts's blanket catch swallows it, and
+ * the app falls back to a ~25s Overpass query for the rest of the session behind one console.warn.
+ *
+ * Node cannot import the TS, so the two files cannot share a definition. src/lib/tileSource.test.ts
+ * reads this file and asserts the numbers match — that test is the only thing standing between the
+ * two, so do not delete it when moving this constant.
+ */
+export const TILE_FORMAT_V = 1;
+
 export const QUANT = 1e-5;
 const SCALE = 1 / QUANT;
 export const TILE_DEG = 0.5;

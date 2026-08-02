@@ -160,7 +160,30 @@ interface Grid<T> {
   jMax: number
 }
 
-const gridCache = new WeakMap<object, Grid<unknown>>()
+/**
+ * The two point accessors in use, hoisted to module scope because their IDENTITY is half the cache
+ * key below. A `(t) => t.pt` written inline at a call site is a FRESH function every call, which
+ * would miss the cache every call and rebuild the grid every call — the exact defeat
+ * {@link waterSplit} exists to prevent, moved into the accessor. Anything new that wants a grid must
+ * pass a stable module-level accessor, not a lambda.
+ */
+const PT_OF_TELL = (t: WeightedTell): LatLng => t.pt
+const PT_ITSELF = (p: LatLng): LatLng => p
+
+/**
+ * Grids, keyed on the ACCESSOR first and then the array.
+ *
+ * Keyed on the array alone, `gridFor(arr, PT_ITSELF)` and `gridFor(arr, PT_OF_TELL)` collide: the
+ * second caller gets a grid whose cells were bucketed by the first caller's points, so the ring
+ * search sweeps the wrong cells and returns a wrong nearest — or a confident `null` — while every
+ * distance it reports is real and every answer looks plausible. No call site does this today, so
+ * this is latent; it is fixed anyway because the failure is a SILENT WRONG ANSWER rather than a
+ * crash, and `nearestWithinM` has made these helpers attractive to code that does not know the rule.
+ *
+ * Two levels rather than a composite key because both halves must be weakly held: neither an
+ * accessor nor a scan's tell array may be kept alive by the cache.
+ */
+const gridCache = new WeakMap<object, WeakMap<object, Grid<unknown>>>()
 
 function buildGrid<T>(tells: T[], ptOf: (t: T) => LatLng): Grid<T> {
   let latSum = 0
@@ -191,8 +214,10 @@ function buildGrid<T>(tells: T[], ptOf: (t: T) => LatLng): Grid<T> {
 }
 
 function gridFor<T>(tells: T[], ptOf: (t: T) => LatLng): Grid<T> {
-  let g = gridCache.get(tells as unknown as object) as Grid<T> | undefined
-  if (!g) gridCache.set(tells as unknown as object, (g = buildGrid(tells, ptOf)) as Grid<unknown>)
+  let byArray = gridCache.get(ptOf)
+  if (!byArray) gridCache.set(ptOf, (byArray = new WeakMap<object, Grid<unknown>>()))
+  let g = byArray.get(tells as unknown as object) as Grid<T> | undefined
+  if (!g) byArray.set(tells as unknown as object, (g = buildGrid(tells, ptOf)) as Grid<unknown>)
   return g
 }
 
@@ -256,13 +281,56 @@ export function anyWithinM(tells: WeightedTell[], pt: LatLng, maxM: number): boo
     for (const t of tells) if (haversineM(pt, t.pt) <= maxM) return true
     return false
   }
-  const grid = gridFor(tells, (t) => t.pt)
+  const grid = gridFor(tells, PT_OF_TELL)
   return ringSearch<WeightedTell, boolean>(
     grid, pt, false,
     (found, t) => found || haversineM(pt, t.pt) <= maxM,
     // Stop as soon as a hit is found, or once no ring can still be within maxM.
     (found, ringMinM) => !found && ringMinM <= maxM,
   )
+}
+
+/**
+ * The NEAREST weighted tell within `maxM` of `pt` — which one it is, and how far — or null.
+ *
+ * The same exact search as {@link anyWithinM}, but that one answers a boolean and `corridorSignal`
+ * averages a nearest-distance over a whole route, so neither can say "there is a lake 280 m off
+ * your right shoulder". A directional (per-side) scan needs the identity and the distance, so this
+ * returns both.
+ *
+ * The ring bound is `min(best, maxM)`, and both halves matter. Bounding on `maxM` alone would
+ * return the first tell that happens to be in range rather than the nearest one; bounding on `best`
+ * alone would sweep the entire occupied extent whenever nothing is in range at all.
+ *
+ * Pass a STABLE array — the grid is cached per array identity, so rebuilding the filtered list on
+ * every call would rebuild the index every call too (see {@link waterSplit}).
+ */
+export function nearestWithinM(
+  tells: WeightedTell[],
+  pt: LatLng,
+  maxM: number,
+): { tell: WeightedTell; distM: number } | null {
+  if (!tells.length) return null
+  if (tells.length < GRID_MIN) {
+    let best: { tell: WeightedTell; distM: number } | null = null
+    for (const t of tells) {
+      const d = haversineM(pt, t.pt)
+      if (d <= maxM && (best === null || d < best.distM)) best = { tell: t, distM: d }
+    }
+    return best
+  }
+  const grid = gridFor(tells, PT_OF_TELL)
+  const best = ringSearch<WeightedTell, { tell: WeightedTell; distM: number } | null>(
+    grid, pt, null,
+    (b, t) => {
+      const d = haversineM(pt, t.pt)
+      return b === null || d < b.distM ? { tell: t, distM: d } : b
+    },
+    (b, ringMinM) => ringMinM < Math.min(b === null ? Infinity : b.distM, maxM),
+  )
+  // The search finds the globally nearest tell; the range test is applied once, at the end, so a
+  // tell just outside maxM can never displace a nearer one that is inside it.
+  return best && best.distM <= maxM ? best : null
 }
 
 /**
@@ -277,7 +345,7 @@ export function corridorSignal(
   adjM = ADJ_M,
 ): { adj: number; prox: number; minM: number } {
   if (!tellPts || !tellPts.length || !routePts.length) return { adj: 0, prox: 0, minM: Infinity }
-  const grid = tellPts.length >= GRID_MIN ? gridFor(tellPts, (p) => p) : null
+  const grid = tellPts.length >= GRID_MIN ? gridFor(tellPts, PT_ITSELF) : null
 
   let adjCount = 0
   let proxSum = 0
@@ -315,7 +383,7 @@ export function weightedSignal(
   tauM: number,
 ): { prox: number; adj: number } {
   if (!weightedTells || !weightedTells.length || !routePts.length) return { prox: 0, adj: 0 }
-  const grid = weightedTells.length >= GRID_MIN ? gridFor(weightedTells, (t) => t.pt) : null
+  const grid = weightedTells.length >= GRID_MIN ? gridFor(weightedTells, PT_OF_TELL) : null
   // A far point can still win if its weight is high, so the ring bound uses the LARGEST weight
   // present: nothing beyond ringMinM can beat `best` once wMax*exp(-ringMinM/tau) <= best.
   let wMax = 0
@@ -346,6 +414,40 @@ export function weightedSignal(
 }
 
 /**
+ * Open-water and minor-watercourse subsets of a scan's water tells, cached per `waterPts` array.
+ *
+ * `.filter()` returns a FRESH array every call and the spatial index caches per array IDENTITY, so
+ * splitting inline meant every `weightedSignal` below re-indexed every water vertex in the scan on
+ * every call. Measured over the 66,067 water points of a tile-sourced scan: 2.10 ms with a stable
+ * split against 20.29 ms with the filters inline, and `scanArea` calls `measureRubric` once per
+ * candidate road (up to 300), so it was roughly 4-5 s of pure redundant indexing per scan.
+ * `routeBuilder` already fixed exactly this for its own shoreline tests; the fix never made it in
+ * here.
+ *
+ * Keyed on identity, so it assumes `waterPts` is never mutated in place. That holds: a scan's tells
+ * are built once and then only read, and the call sites spread the tells OBJECT while keeping the
+ * same underlying arrays. Exported because anything that wants only the open water (a per-side
+ * backdrop scan) must reuse this array rather than filter its own — a fresh filter defeats the
+ * index in exactly the way this cache exists to prevent.
+ */
+const waterSplitCache = new WeakMap<WeightedTell[], { open: WeightedTell[]; minor: WeightedTell[] }>()
+export function waterSplit(waterPts: WeightedTell[]): { open: WeightedTell[]; minor: WeightedTell[] } {
+  let split = waterSplitCache.get(waterPts)
+  if (!split) {
+    split = {
+      open: waterPts.filter((t) => t.w >= OPEN_WATER_W),
+      minor: waterPts.filter((t) => t.w >= MINOR_WATER_W && t.w < OPEN_WATER_W),
+    }
+    waterSplitCache.set(waterPts, split)
+  }
+  return split
+}
+
+/** Fallback for tells with no water at all. Shared rather than a fresh `[]` per call so that the
+ *  empty case also has a stable identity and does not add a cache entry on every call. */
+const NO_WATER: WeightedTell[] = []
+
+/**
  * Build the measured 0-10 rubric fields from categorized tells along a route.
  *
  * tells = {
@@ -366,9 +468,7 @@ export function measureRubric(coords: LatLng[], tells: Partial<RubricTells>): Me
   // WATER — honest "water you actually ride alongside", not mere proximity (see OPEN_WATER_W note).
   // Open water within sight distance, for a sustained fraction of the corridor, plus containment for
   // roads that skirt/cross a real body. A screened creek/stream contributes only a small capped term.
-  const waterPts = tells.waterPts ?? []
-  const openTells = waterPts.filter((t) => t.w >= OPEN_WATER_W)
-  const minorTells = waterPts.filter((t) => t.w >= MINOR_WATER_W && t.w < OPEN_WATER_W)
+  const { open: openTells, minor: minorTells } = waterSplit(tells.waterPts ?? NO_WATER)
   const waterAreas = tells.waterAreas ?? []
   let alongHits = 0
   for (const rp of route) {

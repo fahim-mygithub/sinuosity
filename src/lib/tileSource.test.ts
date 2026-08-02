@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { scanAreaFromTiles, inCoverage, TileMissError, tileCountFor, clearManifestCache } from './tileSource';
 import { fetchAreaScan } from './areaSource';
-import { tileKey, tilesForBounds, tilesForRadius } from './tileCodec';
+import { tileKey, tilesForBounds, tilesForRadius, TILE_FORMAT_V } from './tileCodec';
 import { clearAreaCache } from './overpass';
 
 const WNY: [number, number] = [42.75, -78.25]; // inside tile t_85_-157
@@ -179,6 +179,187 @@ describe('scanAreaFromTiles', () => {
   it('rejects a malformed tile rather than returning junk geometry', async () => {
     stubTiles({ v: 1, bbox: [0, 0, 1, 1] }); // no roads/tells/pois
     await expect(scanAreaFromTiles(WNY, 30)).rejects.toBeTruthy();
+  });
+});
+
+describe('wire format version guard', () => {
+  /**
+   * A structurally valid tile carrying nothing. Enough to prove the reader got past both version
+   * checks, and it does not depend on the committed spike tile — a fresh checkout may not have one,
+   * and a "does the current version load?" test that silently skips itself proves nothing.
+   */
+  function emptyTile(v: number) {
+    return {
+      v,
+      bbox: [42.5, -78.5, 43.0, -78.0],
+      roads: [] as unknown[],
+      tells: {
+        waterPts: { pts: [], w: [] }, waterAreas: [], greenAreas: [], greenPts: [],
+        uglyAreas: [], uglyPts: [], view: [], peak: [], notable: { pts: [], w: [] },
+      },
+      pois: { pts: [], meta: [] },
+    };
+  }
+
+  /**
+   * What a tile from an older corpus looks like to the current reader once a field has moved:
+   * `geom` is absent, so `decodePath(undefined)` reads `.length` off undefined. This exact payload
+   * is the one the guard exists to never reach, and the control test below proves it really is
+   * poison rather than something the decoder happens to tolerate.
+   */
+  function staleShapedTile(v: number) {
+    return { ...emptyTile(v), roads: [{ id: 12345, name: 'Old Road', curveDensity: 0.5 }] };
+  }
+
+  function serve(manifest: Record<string, unknown>, tile: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('manifest.json')) {
+          return { ok: true, status: 200, json: async () => manifest } as unknown as Response;
+        }
+        return { ok: true, status: 200, json: async () => tile } as unknown as Response;
+      }),
+    );
+  }
+
+  /** Every tile a 30km WNY scan requires, so coverage never confounds a version assertion. */
+  function allTiles(): string[] {
+    return tilesForBounds(WNY[0], WNY[1], 30).map(([a, b]) => tileKey(a, b));
+  }
+
+  /** Resolve to whatever the scan threw, so a test can assert on the TYPE and on the text. */
+  async function failureOf(): Promise<Error> {
+    try {
+      await scanAreaFromTiles(WNY, 30);
+    } catch (e) {
+      return e as Error;
+    }
+    throw new Error('expected scanAreaFromTiles to reject, but it resolved');
+  }
+
+  it('accepts a manifest and tiles stamped with the version this build reads', async () => {
+    // A guard that rejects everything would also "fix" the silent-fallback bug, and would make the
+    // corpus permanently unreachable. The current version has to still load.
+    serve({ v: TILE_FORMAT_V, tileDeg: 0.5, marginKm: 25, tiles: allTiles() }, emptyTile(TILE_FORMAT_V));
+    const scan = await scanAreaFromTiles(WNY, 30);
+    expect(scan.center).toEqual(WNY);
+    expect(scan.radiusKm).toBe(30);
+  });
+
+  it('rejects a manifest with no version field, naming the version it expected', async () => {
+    // The corpus predating the guard has no `v` in the shape the reader is looking for; treating
+    // absent as "probably fine" is how the original bug got in.
+    serve({ tileDeg: 0.5, marginKm: 25, tiles: allTiles() }, emptyTile(TILE_FORMAT_V));
+    const err = await failureOf();
+    expect(err).toBeInstanceOf(TileMissError);
+    expect(err.message).toMatch(/manifest/);
+    expect(err.message).toContain(`v${TILE_FORMAT_V}`);
+  });
+
+  it('rejects a manifest from another corpus version, naming both versions', async () => {
+    // Diagnosable from a console log alone: the warn line in areaSource.ts prints only `.message`,
+    // so a message that says "version mismatch" without the two numbers costs a debugging session.
+    const stale = TILE_FORMAT_V + 1;
+    serve({ v: stale, tileDeg: 0.5, marginKm: 25, tiles: allTiles() }, emptyTile(stale));
+    const err = await failureOf();
+    expect(err).toBeInstanceOf(TileMissError);
+    expect(err.message).toContain(`v${stale}`);
+    expect(err.message).toContain(`v${TILE_FORMAT_V}`);
+  });
+
+  it('control: a tile whose fields have moved really is undecodable', async () => {
+    // Without this the regression test below could pass against a harmless payload and prove
+    // nothing. Stamped with the CURRENT version so the guard waves it through to the decoder.
+    serve(
+      { v: TILE_FORMAT_V, tileDeg: 0.5, marginKm: 25, tiles: allTiles() },
+      staleShapedTile(TILE_FORMAT_V),
+    );
+    const err = await failureOf();
+    expect(err).toBeInstanceOf(TypeError); // decodePath(undefined)
+  });
+
+  it('rejects a stale tile on its VERSION rather than on the TypeError decoding it raises', async () => {
+    // THE REGRESSION. Same payload as the control, one number different. A TypeError here is caught
+    // by the blanket catch in fetchAreaScan and becomes a silent permanent fallback to Overpass:
+    // every scan for the rest of the session takes ~25s instead of ~1s. Assert the TYPE, because
+    // "it threw" is exactly what the buggy version did too.
+    const stale = TILE_FORMAT_V + 1;
+    serve({ v: TILE_FORMAT_V, tileDeg: 0.5, marginKm: 25, tiles: allTiles() }, staleShapedTile(stale));
+    const err = await failureOf();
+    expect(err).toBeInstanceOf(TileMissError);
+    expect(err).not.toBeInstanceOf(TypeError);
+    expect(err.message).toMatch(/^tile t_-?\d+_-?\d+:/); // which tile, not just "a tile"
+    expect(err.message).toContain(`v${stale}`);
+    expect(err.message).toContain(`v${TILE_FORMAT_V}`);
+  });
+
+  it('checks the tile version independently of the manifest version', async () => {
+    // Manifest and tiles are separate static files with separate cache lifetimes, so a browser can
+    // hold a fresh manifest alongside a stale tile. A guard on the manifest alone would pass this.
+    serve({ v: TILE_FORMAT_V, tileDeg: 0.5, marginKm: 25, tiles: allTiles() }, emptyTile(TILE_FORMAT_V + 1));
+    await expect(scanAreaFromTiles(WNY, 30)).rejects.toBeInstanceOf(TileMissError);
+  });
+});
+
+describe('the version the BUILDER stamps', () => {
+  // The guard above only covers the reader. The writer fails symmetrically and worse: stamp a stale
+  // version into a freshly built corpus and every tile is rejected, areaSource.ts's blanket catch
+  // eats the TileMissError, and every scan in the app silently takes the ~25s Overpass path. Nothing
+  // in the reader's own tests can see that, because to them a rejected tile IS the correct outcome.
+  //
+  // Node cannot import tileCodec.ts, so the constant is duplicated into the .mjs twin and these
+  // tests are the whole coupling between the two files.
+
+  /** Resolved from import.meta.url, not cwd — vitest's working directory is not guaranteed. */
+  const buildTilesUrl = new URL('../../scripts/build-tiles.mjs', import.meta.url);
+
+  it('matches the version the reader enforces', async () => {
+    // Same method as the encoder-parity test in tileCodec.test.ts: import the module and compare the
+    // EVALUATED export, so this holds however the constant comes to be written.
+    const mjs = await import('../../scripts/lib/tile-codec.mjs');
+    expect(mjs.TILE_FORMAT_V).toBe(TILE_FORMAT_V);
+  });
+
+  it('stamps tiles and the manifest from the shared constant, never a literal', () => {
+    // Source inspection rather than execution: build-tiles.mjs is a top-level IIFE that would start
+    // an Overpass crawl on import. Both stamps (the tile object and writeManifest) must read the
+    // constant — a literal here is invisible until the day someone bumps the version, which is the
+    // exact day it costs the most.
+    const src = readFileSync(buildTilesUrl, 'utf8');
+    const stamps = [...src.matchAll(/\bv:\s*([A-Za-z0-9_.]+)/g)].map((m) => m[1]);
+    expect(stamps).toHaveLength(2); // the tile, and the manifest
+    for (const s of stamps) expect(s).toBe('TILE_FORMAT_V');
+    expect(src).toMatch(/import\s*{[^}]*\bTILE_FORMAT_V\b[^}]*}\s*from\s*'\.\/lib\/tile-codec\.mjs'/);
+  });
+});
+
+describe('the committed corpus', () => {
+  const TILE_DIR = 'public/tiles';
+
+  /**
+   * Read the version out of a tile without parsing it. The corpus measured 116.8 MB across 82 tiles
+   * on 2026-08-02, so parsing it in a unit test would cost seconds; `v` is the first key the builder
+   * writes, so a 4 KB prefix always contains it. No other key in the wire format is `"v"` — `view`
+   * and the weight arrays (`w`) do not collide.
+   */
+  function tileVersion(path: string): number | null {
+    const head = readFileSync(path).subarray(0, 4096).toString('utf8');
+    const m = /"v":\s*(\d+)/.exec(head);
+    return m ? Number(m[1]) : null;
+  }
+
+  it('is stamped with the version this build reads', () => {
+    if (!existsSync(REAL_TILE_PATH)) return; // corpus not built in this checkout
+    const files = readdirSync(TILE_DIR).filter((f) => f.endsWith('.json') && f !== 'manifest.json');
+    expect(files.length).toBeGreaterThan(0);
+    // Named, not counted: a stale tile has to be identifiable from the failure alone, because the
+    // fix is to rebuild that tile.
+    const wrong = files.filter((f) => tileVersion(`${TILE_DIR}/${f}`) !== TILE_FORMAT_V);
+    expect(wrong).toEqual([]);
+
+    const manifest = JSON.parse(readFileSync(`${TILE_DIR}/manifest.json`, 'utf8'));
+    expect(manifest.v).toBe(TILE_FORMAT_V);
   });
 });
 

@@ -2,6 +2,7 @@
 // without falling back to `any` — the parity test is worthless if TypeScript cannot see the shapes
 // it is comparing.
 
+export declare const TILE_FORMAT_V: number;
 export declare const QUANT: number;
 export declare const TILE_DEG: number;
 export declare const MARGIN_KM: number;
