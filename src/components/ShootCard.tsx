@@ -118,6 +118,78 @@ export function backdropHeading(travelBearingDeg: number, side: Side | null): nu
 }
 
 /**
+ * Degrees of pan per tap on the frame's rotate control, and why it is a step rather than a drag.
+ *
+ * The frame is a Street View STATIC image, so every distinct heading is a separate billed request
+ * over a separate round trip — a continuous control would fire one per pointer move. Stepping by a
+ * fixed amount off the aim means one location can only ever produce 360/45 = 8 distinct URLs, and
+ * the browser cache serves the second lap round for nothing.
+ *
+ * 45 is also what keeps the pan continuous to look at. `streetViewStaticUrl` renders a 78° field of
+ * view, so consecutive frames share 33° of scene and the rider can see how one becomes the next. A
+ * step of 78 or more would jump-cut past whatever sat between the two frames — which on a card
+ * about what stands beside the road is the one thing rotation exists to prevent.
+ */
+export const ROTATE_STEP_DEG = 45;
+
+/**
+ * Fold a RELATIVE angle onto the short way round, signed: (-180, 180].
+ *
+ * Deliberately not {@link normalizeBearing}, which folds an ABSOLUTE bearing onto [0, 360). Turning
+ * 270° right and 90° left leave the camera pointing at the same thing, and a rider who tapped left
+ * twice is owed "90° left" rather than "270° right". Positive is right, the same sense as
+ * `backdropHeading`'s +90, so the two cannot drift apart.
+ */
+export function signedOffset(deg: number): number {
+  const n = normalizeBearing(deg);
+  return n > 180 ? n - 360 : n;
+}
+
+/** One tap: `steps` of {@link ROTATE_STEP_DEG}, kept on the short way round. Wraps, never dead-ends. */
+export function rotateOffset(offsetDeg: number, steps: number): number {
+  return signedOffset(offsetDeg + steps * ROTATE_STEP_DEG);
+}
+
+/**
+ * Where a view heading points RELATIVE TO THE RIDE, in the words a rider would use.
+ *
+ * The compass answer is already on the card, and it is the wrong frame of reference for this: a
+ * rider panning the preview is asking "is that thing ahead of me or behind me", not "is it at 315°".
+ * Eight buckets of 45° means every reachable {@link ROTATE_STEP_DEG} position lands exactly on a
+ * phrase rather than between two, so the rounding is exact for every value this can be called with.
+ *
+ * Taken against travel rather than against the aim so it stays true for a `left` backdrop as well —
+ * see the note on {@link backdropHeading} about why that branch is kept.
+ */
+const VIEW_RELATIVE = [
+  'up the road ahead',
+  'ahead and to your right',
+  'square right',
+  'behind and to your right',
+  'back down the road',
+  'behind and to your left',
+  'square left',
+  'ahead and to your left',
+] as const;
+
+export function viewRelativeToTravel(headingDeg: number, travelBearingDeg: number): string {
+  return VIEW_RELATIVE[Math.round(normalizeBearing(headingDeg - travelBearingDeg) / 45) % 8];
+}
+
+/**
+ * How far the rider has panned off the aim, or null when they are still on it.
+ *
+ * Half a turn has no side — you reach 180 by four taps either way and the camera is pointing back
+ * the other way regardless — so naming one would be inventing a fact about which button was pressed.
+ */
+export function offsetLabel(offsetDeg: number): string | null {
+  const o = signedOffset(offsetDeg);
+  if (o === 0) return null;
+  if (Math.abs(o) === 180) return 'turned right round from the boom’s aim';
+  return `${Math.abs(o)}° ${o > 0 ? 'right' : 'left'} of the boom’s aim`;
+}
+
+/**
  * How the DEM half of `backdrop` stands for this mark. THREE states, not two.
  *
  * `LateralFall` arrives asynchronously and `null` is ambiguous on its own: `enrichMarks` re-scores
@@ -339,9 +411,24 @@ export interface ShootCardProps {
  */
 export function ShootCard({ mark, rank, total, at, units, refining, onBack, onLocate }: ShootCardProps) {
   const [lat, lon] = mark.window.mid;
-  const heading = backdropHeading(mark.travelBearingDeg, mark.backdropSide);
+  const aim = backdropHeading(mark.travelBearingDeg, mark.backdropSide);
   const side = mark.backdropSide;
   const reading = side ? mark.backdrop[side] : null;
+
+  // How far the rider has panned the preview off that aim. It lives up here rather than inside the
+  // frame because the "Street View" button below opens the real panorama and should open it at the
+  // angle they found, not at the one they panned away from.
+  //
+  // Reset DURING the render that brings a new mark in, not in an effect afterwards. An effect would
+  // let one frame commit with the previous mark's offset applied, and a committed frame here is a
+  // billed Street View request for an angle nobody asked to see.
+  const [viewOffset, setViewOffset] = useState(0);
+  const [offsetFor, setOffsetFor] = useState(mark.id);
+  if (offsetFor !== mark.id) {
+    setOffsetFor(mark.id);
+    setViewOffset(0);
+  }
+  const heading = normalizeBearing(aim + viewOffset);
 
   const len = (m: number) => coarseLength(m, units);
 
@@ -395,7 +482,22 @@ export function ShootCard({ mark, rank, total, at, units, refining, onBack, onLo
         </p>
       </div>
 
-      <BackdropFrame lat={lat} lon={lon} heading={heading} side={side} road={mark.roadName} />
+      {/* Keyed on the mark so a new one gets a frame that has loaded nothing and failed nothing.
+          Without it the next mark inherits this one's "already loaded" and paints the previous
+          road's verge at full opacity until its own image lands — on a card whose entire job is to
+          show the rider THIS verge. */}
+      <BackdropFrame
+        key={mark.id}
+        lat={lat}
+        lon={lon}
+        heading={heading}
+        offsetDeg={viewOffset}
+        travelBearingDeg={mark.travelBearingDeg}
+        side={side}
+        road={mark.roadName}
+        onRotate={(steps) => setViewOffset((o) => rotateOffset(o, steps))}
+        onReset={() => setViewOffset(0)}
+      />
 
       <div className="bg-slate-950/50 px-3 py-2.5 rounded-xl border border-slate-800">
         <p className="text-[11px] text-slate-200 leading-snug">
@@ -495,7 +597,15 @@ export function ShootCard({ mark, rank, total, at, units, refining, onBack, onLo
 }
 
 /**
- * The confirmation frame: Street View looking square across the road at the backdrop side.
+ * The confirmation frame: Street View looking square across the road at the backdrop side, and
+ * pannable off that aim in {@link ROTATE_STEP_DEG} steps.
+ *
+ * ROTATION IS FOR THE OCCLUSION THIS APP CANNOT SEE. The scores behind this card are measured from
+ * map data and a DEM, neither of which knows about the treeline, the fence or the shed that stands
+ * between the road and the lake — the card says so twice in its own footnotes. The fixed aim answers
+ * "what is the camera pointed at"; panning answers "and can you actually see it", which is the
+ * question every honesty note on this card ends up raising and none of them could previously
+ * resolve. It changes nothing that is scored, and the caption says so the moment it moves.
  *
  * The no-key path is preserved rather than degraded to nothing, because the site has to work
  * without a Google key: no key (or a location with no panorama) falls back to a labelled
@@ -505,34 +615,60 @@ function BackdropFrame({
   lat,
   lon,
   heading,
+  offsetDeg,
+  travelBearingDeg,
   side,
   road,
+  onRotate,
+  onReset,
 }: {
   lat: number;
   lon: number;
+  /** Where the frame currently looks: the aim plus whatever the rider has panned. */
   heading: number;
+  /** That pan, signed, right-positive — 0 while the frame is still on the aim. */
+  offsetDeg: number;
+  travelBearingDeg: number;
   side: Side | null;
   road: string;
+  onRotate: (steps: number) => void;
+  onReset: () => void;
 }) {
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // Tracked BY URL rather than as two booleans. A pano either exists at a location or it does not,
+  // so a real miss fails at every heading and keeps showing the placeholder — but a one-off network
+  // blip on a single pan would otherwise latch `failed` forever and strand the rider on "no imagery
+  // here" for a location whose imagery they were just looking at.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const src = streetViewStaticUrl(lat, lon, heading, { size: '640x400' });
+  const failed = src != null && failedSrc === src;
   const facing = side ?? 'right';
+  const panned = offsetLabel(offsetDeg);
+  const relative = viewRelativeToTravel(heading, travelBearingDeg);
+  // The previous heading's frame stays up while the next one loads — dimmed, not blanked. Blanking
+  // to a skeleton on every tap would make a pan read as four unrelated photographs.
+  const pending = src != null && !failed && loadedSrc !== src;
 
   return (
     <figure className="m-0">
       <div className="relative aspect-[16/10] w-full rounded-xl border border-slate-800 overflow-hidden bg-slate-900/40">
         {src && !failed ? (
           <>
-            {!loaded && <div className="absolute inset-0 motion-safe:animate-pulse bg-slate-800" aria-hidden />}
+            {!loadedSrc && <div className="absolute inset-0 motion-safe:animate-pulse bg-slate-800" aria-hidden />}
             <img
               src={src}
-              alt={`Street View on ${road || 'this road'}, looking ${facing} at the backdrop`}
+              alt={
+                panned
+                  ? `Street View on ${road || 'this road'}, looking ${relative}`
+                  : `Street View on ${road || 'this road'}, looking ${facing} at the backdrop`
+              }
               loading="lazy"
               decoding="async"
-              onLoad={() => setLoaded(true)}
-              onError={() => setFailed(true)}
-              className={`w-full h-full object-cover ${loaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setLoadedSrc(src)}
+              onError={() => setFailedSrc(src)}
+              className={`w-full h-full object-cover transition-opacity duration-200 ${
+                loadedSrc ? (pending ? 'opacity-60' : 'opacity-100') : 'opacity-0'
+              }`}
             />
           </>
         ) : (
@@ -553,11 +689,61 @@ function BackdropFrame({
             </div>
           </div>
         )}
+
+        {/* Only over a real frame: there is nothing to pan when the placeholder is showing, and the
+            no-key state has no imagery to spend requests on. */}
+        {src && !failed && (
+          <>
+            <RotateButton edge="left" onClick={() => onRotate(-1)} />
+            <RotateButton edge="right" onClick={() => onRotate(1)} />
+          </>
+        )}
       </div>
+
       <figcaption className="mt-1.5 text-[10px] text-slate-400 leading-snug">
-        Looking {facing} at {Math.round(heading)}° — square across the road, the way the boom points.
+        {panned ? (
+          <>
+            Looking {relative}, at {Math.round(heading)}° — {panned}. Every score on this card
+            measures the aim, not this angle.{' '}
+            <button
+              type="button"
+              onClick={onReset}
+              className="min-h-[44px] px-1 font-bold text-emerald-400 hover:underline"
+            >
+              ↺ Back to the aim
+            </button>
+          </>
+        ) : (
+          <>
+            Looking {facing} at {Math.round(heading)}° — square across the road, the way the boom
+            points. Pan it to see whether anything stands in the way.
+          </>
+        )}
       </figcaption>
     </figure>
+  );
+}
+
+/**
+ * One pan control, overlaid on the frame's edge.
+ *
+ * 44px square, the same touch target as every other control on this card, and labelled with the
+ * angle rather than a bare "left" — a screen-reader user gets no scene from the image, so the size
+ * of the step is the only thing that tells them what the button did.
+ */
+function RotateButton({ edge, onClick }: { edge: 'left' | 'right'; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Look ${ROTATE_STEP_DEG}° further ${edge}`}
+      className={`absolute top-1/2 -translate-y-1/2 ${edge === 'left' ? 'left-1.5' : 'right-1.5'}
+        w-11 h-11 grid place-items-center rounded-full bg-slate-950/70 border border-slate-700
+        text-slate-100 text-xl leading-none backdrop-blur-[2px]
+        hover:bg-slate-950/85 active:scale-95 transition-all`}
+    >
+      <span aria-hidden>{edge === 'left' ? '‹' : '›'}</span>
+    </button>
   );
 }
 

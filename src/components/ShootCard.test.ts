@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import {
+  ROTATE_STEP_DEG,
   backdropHeading,
   cleanDriver,
   cleanProxyNote,
@@ -9,11 +10,15 @@ import {
   landformScaleLabel,
   noBackdropPhrase,
   normalizeBearing,
+  offsetLabel,
   proxyValue,
   rideDirectionPhrase,
+  rotateOffset,
   shortlistBadge,
+  signedOffset,
   terrainClause,
   terrainRead,
+  viewRelativeToTravel,
 } from './ShootCard';
 import {
   FULL_JUNCTION_DENSITY,
@@ -139,6 +144,147 @@ describe('backdropHeading', () => {
     // so that is still the frame worth showing.
     expect(backdropHeading(0, null)).toBe(backdropHeading(0, 'right'));
     expect(backdropHeading(217, null)).toBe(backdropHeading(217, 'right'));
+  });
+});
+
+// Panning the preview off that aim. Same standard as above: the facts asserted are the ones anybody
+// can rederive standing on a road. Turning right raises your bearing; four taps of 45 is half a turn
+// whichever way you went; and a rider who has panned is owed the small angle, not the reflex one.
+
+describe('signedOffset', () => {
+  it('leaves the short way round alone', () => {
+    expect(signedOffset(0)).toBe(0);
+    expect(signedOffset(45)).toBe(45);
+    expect(signedOffset(-45)).toBe(-45);
+    expect(signedOffset(179)).toBe(179);
+  });
+
+  it('takes the reflex angle the short way, keeping the sense', () => {
+    // 270 to the right and 90 to the left leave the camera on the same scene.
+    expect(signedOffset(270)).toBe(-90);
+    expect(signedOffset(-270)).toBe(90);
+    expect(signedOffset(315)).toBe(-45);
+  });
+
+  it('gives half a turn one canonical form, from either direction', () => {
+    expect(signedOffset(180)).toBe(180);
+    expect(signedOffset(-180)).toBe(180);
+  });
+
+  it('folds whole turns away', () => {
+    expect(signedOffset(360)).toBe(0);
+    expect(signedOffset(405)).toBe(45);
+    expect(signedOffset(-405)).toBe(-45);
+  });
+});
+
+describe('rotateOffset', () => {
+  it('steps right by ROTATE_STEP_DEG and left by the same', () => {
+    expect(rotateOffset(0, 1)).toBe(ROTATE_STEP_DEG);
+    expect(rotateOffset(0, -1)).toBe(-ROTATE_STEP_DEG);
+  });
+
+  it('closes the circle in 8 steps and never dead-ends', () => {
+    // The control has no clamp, so holding one button must keep producing new scene rather than
+    // sticking at half a turn.
+    let o = 0;
+    const seen = new Set<number>();
+    for (let i = 0; i < 8; i++) {
+      o = rotateOffset(o, 1);
+      seen.add(o);
+    }
+    expect(seen.size).toBe(8);
+    expect(o).toBe(0);
+  });
+
+  it('reaches half a turn from either side, and agrees with itself there', () => {
+    expect(rotateOffset(0, 4)).toBe(180);
+    expect(rotateOffset(0, -4)).toBe(180);
+  });
+
+  it('only ever produces multiples of the step, so a location can only mint 8 image URLs', () => {
+    // This is the billing claim in ROTATE_STEP_DEG's comment: 8 distinct headings per location,
+    // every repeat served from the browser cache.
+    let o = 0;
+    const seen = new Set<number>();
+    for (const steps of [1, 1, -1, 3, -5, 2, 7, -11, 4]) {
+      o = rotateOffset(o, steps);
+      expect(Number.isInteger(o / ROTATE_STEP_DEG)).toBe(true);
+      seen.add(o);
+    }
+    expect(seen.size).toBeLessThanOrEqual(8);
+  });
+});
+
+describe('viewRelativeToTravel', () => {
+  it('names the four square-on directions against the ride', () => {
+    // Riding north: the aim (east) is square right, and the road ahead is north.
+    expect(viewRelativeToTravel(0, 0)).toBe('up the road ahead');
+    expect(viewRelativeToTravel(90, 0)).toBe('square right');
+    expect(viewRelativeToTravel(180, 0)).toBe('back down the road');
+    expect(viewRelativeToTravel(270, 0)).toBe('square left');
+  });
+
+  it('names the diagonals', () => {
+    expect(viewRelativeToTravel(45, 0)).toBe('ahead and to your right');
+    expect(viewRelativeToTravel(135, 0)).toBe('behind and to your right');
+    expect(viewRelativeToTravel(225, 0)).toBe('behind and to your left');
+    expect(viewRelativeToTravel(315, 0)).toBe('ahead and to your left');
+  });
+
+  it('is about the ride, not the compass — the same phrase at every bearing', () => {
+    for (let travel = 0; travel < 360; travel += 13) {
+      expect(viewRelativeToTravel(travel, travel)).toBe('up the road ahead');
+      expect(viewRelativeToTravel(travel + 90, travel)).toBe('square right');
+      expect(viewRelativeToTravel(travel - 90, travel)).toBe('square left');
+    }
+  });
+
+  it('describes every position the rotate control can reach, from either verge', () => {
+    // The aim is +90 for a right backdrop and -90 for a left one, and both are pannable. Nothing
+    // reachable may fall off the table.
+    for (const side of ['right', 'left'] as const) {
+      for (let travel = 0; travel < 360; travel += 29) {
+        for (let steps = -8; steps <= 8; steps++) {
+          const view = normalizeBearing(backdropHeading(travel, side) + rotateOffset(0, steps));
+          expect(viewRelativeToTravel(view, travel)).toBeTypeOf('string');
+        }
+      }
+    }
+  });
+
+  it('agrees with the aim: on the aim, a right backdrop reads square right', () => {
+    for (let travel = 0; travel < 360; travel += 11) {
+      expect(viewRelativeToTravel(backdropHeading(travel, 'right'), travel)).toBe('square right');
+      expect(viewRelativeToTravel(backdropHeading(travel, 'left'), travel)).toBe('square left');
+      // A null side aims right, so it must read as the right-hand boom too.
+      expect(viewRelativeToTravel(backdropHeading(travel, null), travel)).toBe('square right');
+    }
+  });
+});
+
+describe('offsetLabel', () => {
+  it('says nothing at all while the frame is still on the aim', () => {
+    // The unpanned caption is a different sentence entirely; a "0° right" would be noise on it.
+    expect(offsetLabel(0)).toBeNull();
+    expect(offsetLabel(360)).toBeNull();
+  });
+
+  it('names the size and the side of the pan', () => {
+    expect(offsetLabel(45)).toBe('45° right of the boom’s aim');
+    expect(offsetLabel(-90)).toBe('90° left of the boom’s aim');
+  });
+
+  it('reports the short way round rather than the reflex angle', () => {
+    // Three taps left is 135 left, never 225 right.
+    expect(offsetLabel(rotateOffset(0, -3))).toBe('135° left of the boom’s aim');
+    expect(offsetLabel(225)).toBe('135° left of the boom’s aim');
+  });
+
+  it('claims no side at half a turn, which is reachable both ways', () => {
+    expect(offsetLabel(180)).toBe('turned right round from the boom’s aim');
+    expect(offsetLabel(-180)).toBe(offsetLabel(180));
+    expect(offsetLabel(rotateOffset(0, 4))).toBe(offsetLabel(rotateOffset(0, -4)));
   });
 });
 
