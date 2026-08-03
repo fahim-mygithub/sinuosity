@@ -27,13 +27,15 @@ import {
 } from './lib/cloudSync';
 import { formatDistance, toUnits, fromUnits, distanceLabel } from './lib/units';
 import { reverseGeocode } from './lib/geocode';
+import { googleMapsUrl } from './lib/mapsUrl';
 import { LocationSearch } from './components/LocationSearch';
 import { ScenicRouteReview } from './components/ScenicRouteReview';
 import { SettingsMenu } from './components/SettingsMenu';
 import {
   ReelPanel, markColor, dayAnchor, holdInstant, peakInstant, reelPool, reelShortlist,
-  toDateInput, toTimeInput, REEL_REBUILD_DEBOUNCE_MS,
+  toDateInput, toTimeInput, REEL_REBUILD_DEBOUNCE_MS, type ReelView,
 } from './components/ReelPanel';
+import { buildShootRide, type ShootRide } from './lib/reelRoute';
 import { enrichMarks, type ReelOptions } from './lib/reelScore';
 import { shootWindow } from './lib/reelPlan';
 import { REEL_WEIGHTS, type CameraAim, type ReelMark, type ReelMetrics } from './lib/reelTypes';
@@ -185,8 +187,15 @@ export default function App() {
   const [reelRunning, setReelRunning] = useState(false);
   const [reelRefining, setReelRefining] = useState(false);
   const [reelHasRun, setReelHasRun] = useState(false);
-  const [reelView, setReelView] = useState<'setup' | 'shots'>('setup');
+  const [reelView, setReelView] = useState<ReelView>('setup');
   const [reelAim, setReelAim] = useState<CameraAim>('side');
+  // The chained ride. Held as state (unlike the pool) because the whole ride view and the map layer
+  // render from it, and cleared whenever the shortlist beneath it moves — a ride built from marks
+  // that no longer exist would draw a route to shots the rider can no longer open.
+  const [reelRide, setReelRide] = useState<ShootRide | null>(null);
+  const [reelRideBuilding, setReelRideBuilding] = useState(false);
+  const [reelRideKm, setReelRideKm] = useState(60);
+  const [reelRideLoop, setReelRideLoop] = useState(true);
   const [reelWeights, setReelWeights] = useState<ReelMetrics>(REEL_WEIGHTS);
   const [reelDate, setReelDate] = useState(() => toDateInput(new Date()));
   // Default to the middle of tonight's best light at the rider's home, so the tab opens on a real
@@ -847,15 +856,113 @@ export default function App() {
     [reelMarks],
   );
 
+  /**
+   * The transit half of a chained ride: everything between the shots.
+   *
+   * The shot legs are deliberately NOT drawn here. `drawReelMarks` already draws that same ground as
+   * a numbered, tappable mark, and a second polyline over it would only be a heavier line that opens
+   * nothing when tapped. Connectors are slate and quiet because they are the part of the evening the
+   * rider is not filming; the way home is dashed, the same idiom the Scan tab's loops already use.
+   */
+  const drawReelRide = useCallback((ride: ShootRide) => {
+    for (const leg of ride.legs) {
+      if (leg.kind === 'shot') continue;
+      addLayer(
+        L.polyline(
+          leg.coords,
+          leg.kind === 'return'
+            ? { color: '#38bdf8', ...RETURN_DASH }
+            : { color: '#64748b', weight: 3, opacity: 0.85 },
+        ),
+      );
+    }
+    addLayer(
+      L.circleMarker(ride.start, {
+        radius: 6,
+        color: '#10b981',
+        fillColor: '#022c22',
+        fillOpacity: 1,
+        weight: 2,
+      }).bindTooltip('Ride starts here'),
+    );
+  }, [addLayer]);
+
+  const reelRideDrawKey = useMemo(
+    () => (reelRide ? `${reelRide.shots.map((s) => s.mark.id).join('|')}@${Math.round(reelRide.km * 100)}` : ''),
+    [reelRide],
+  );
+
   // All Reel drawing lives here rather than being scattered through the handlers, so the map is a
-  // pure function of (marks, selection) and cannot fall out of step with the list.
+  // pure function of (marks, selection, ride) and cannot fall out of step with the list.
   useEffect(() => {
     if (!ready || !map || tab !== 'reel') return;
     clearLayers();
     drawScanCircle(scanCenterLatLng);
-    drawReelMarks(reelMarks, reelSelectedId);
+    // In the ride view the marks drawn are the RIDE's, in riding order — `drawReelMarks` numbers by
+    // array position, so passing the ride's own shots is what makes the number on the map the number
+    // in the itinerary. Drawing the whole shortlist here instead would put shortlist ranks on a map
+    // of a ride that visits them in a different order, which is the one confusion worth spending a
+    // branch to avoid.
+    if (reelView === 'ride' && reelRide) {
+      drawReelRide(reelRide);
+      drawReelMarks(reelRide.shots.map((s) => s.mark), reelSelectedId);
+    } else {
+      drawReelMarks(reelMarks, reelSelectedId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps — keyed on what is drawn, not on identity
-  }, [ready, map, tab, reelDrawKey, reelSelectedId]);
+  }, [ready, map, tab, reelDrawKey, reelSelectedId, reelView, reelRideDrawKey]);
+
+  /**
+   * Chain the shortlist into one ride.
+   *
+   * Deferred by a turn of the event loop rather than run inline: the build is pure CPU (one graph
+   * search per candidate, then an exact tour) and blocking the click handler would leave the button
+   * showing its idle label for the whole of it. The delay buys the pending state a paint, nothing
+   * more — there is no network here to wait on.
+   */
+  const buildReelRide = useCallback(() => {
+    const scan = reelScanRef.current;
+    if (!scan || !reelMarks.length) return;
+    setReelRideBuilding(true);
+    setTimeout(() => {
+      try {
+        setReelRide(
+          buildShootRide(reelMarks, scan, {
+            from: scanCenterLatLng,
+            targetKm: reelRideKm,
+            loop: reelRideLoop,
+            departAt: reelAt,
+            window: reelShoot,
+          }),
+        );
+      } catch {
+        // A ride is a convenience over a shortlist that is already on screen and already useful, so
+        // a failure to chain must not take the shortlist down with it.
+        setReelRide(null);
+      } finally {
+        setReelRideBuilding(false);
+      }
+    }, 0);
+  }, [reelMarks, scanCenterLatLng, reelRideKm, reelRideLoop, reelAt, reelShoot]);
+
+  // A ride outlives nothing. The moment the shortlist beneath it moves — a new scan, a weight nudge,
+  // the refinement landing — the ride is about marks that may no longer be on screen, so it goes.
+  const reelMarkIds = useMemo(() => reelMarks.map((m) => m.id).join('|'), [reelMarks]);
+  useEffect(() => {
+    setReelRide(null);
+  }, [reelMarkIds]);
+
+  /** The whole ride as one navigable link: the fun and the transit, with the way home as the return. */
+  const reelRideHref = useMemo(() => {
+    if (!reelRide) return null;
+    const back = reelRide.legs.find((l) => l.kind === 'return');
+    const out = reelRide.legs.filter((l) => l.kind !== 'return').flatMap((l) => l.coords);
+    if (out.length < 2) return null;
+    return googleMapsUrl(out, {
+      origin: reelRide.start,
+      ...(back ? { returnCoords: back.coords } : {}),
+    });
+  }, [reelRide]);
 
   /**
    * Stage two: refine an already-ranked shortlist with the DEM lateral fall and the built-up query.
@@ -1517,6 +1624,19 @@ export default function App() {
               hasRun={reelHasRun}
               view={reelView}
               onViewChange={setReelView}
+              ride={{
+                ride: reelRide,
+                building: reelRideBuilding,
+                markCount: reelMarks.length,
+                units,
+                targetKm: reelRideKm,
+                onTargetKmChange: setReelRideKm,
+                loop: reelRideLoop,
+                onLoopChange: setReelRideLoop,
+                onBuild: buildReelRide,
+                onSelectShot: selectReelMark,
+                mapsHref: reelRideHref,
+              }}
               action={reelAction}
               showAction={!sheet.isMobile}
             />

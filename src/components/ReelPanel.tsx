@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { LocationSearch } from './LocationSearch';
 import { REEL_METRIC_ROWS, ShootCard, clock, rideDirectionPhrase } from './ShootCard';
+import { ShootRideView, type ShootRideViewProps } from './ShootRideView';
 import { distanceLabel, fromUnits, toUnits } from '../lib/units';
 import { scoreWindows, selectMarks, type ReelOptions } from '../lib/reelScore';
 import type { Units } from '../lib/preferences';
@@ -210,6 +211,16 @@ export function peakInstant(w: ShootWindow): Date {
  */
 export const REEL_REBUILD_DEBOUNCE_MS = 700;
 
+/**
+ * The panel's three states.
+ *
+ * `ride` is a third VIEW rather than a mode, for the same reason the shoot card is a state of
+ * `shots` rather than a fourth one: chaining does not change what was scanned or how it was scored,
+ * so leaving the ride and coming back must not cost a rebuild. The shortlist stays exactly as it
+ * was and the ride is a reading of it.
+ */
+export type ReelView = 'setup' | 'shots' | 'ride';
+
 // ------------------------------------------------------------------------------------------------
 // Degradation
 // ------------------------------------------------------------------------------------------------
@@ -299,8 +310,12 @@ export interface ReelPanelProps {
   /** True while `enrichMarks` is still in flight — a note, never a blocker. */
   refining: boolean;
   hasRun: boolean;
-  view: 'setup' | 'shots';
-  onViewChange: (v: 'setup' | 'shots') => void;
+  view: ReelView;
+  onViewChange: (v: ReelView) => void;
+
+  // --- the ride ----------------------------------------------------------------------------
+  /** Everything the ride view needs, passed through untouched. */
+  ride: ShootRideViewProps;
   /** The primary action. App owns it so the mobile sheet can pin the same node above the scroll. */
   action: ReactNode;
   /** False on mobile, where `action` is already pinned in the sheet's top region. */
@@ -327,7 +342,7 @@ export function ReelPanel(props: ReelPanelProps) {
       </div>
 
       {marks.length > 0 && (
-        <div role="group" aria-label="Shot finder view" className="grid grid-cols-2 gap-0.5 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+        <div role="group" aria-label="Shot finder view" className="grid grid-cols-3 gap-0.5 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
           <button
             onClick={() => props.onViewChange('setup')}
             aria-pressed={props.view === 'setup'}
@@ -342,8 +357,17 @@ export function ReelPanel(props: ReelPanelProps) {
           >
             Shots · {marks.length}
           </button>
+          <button
+            onClick={() => props.onViewChange('ride')}
+            aria-pressed={props.view === 'ride'}
+            className={`min-h-[40px] rounded-lg text-[11px] font-bold transition-all ${props.view === 'ride' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+          >
+            Ride{props.ride.ride ? ` · ${props.ride.ride.shots.length}` : ''}
+          </button>
         </div>
       )}
+
+      {props.view === 'ride' && marks.length > 0 && <ShootRideView {...props.ride} />}
 
       {/* The card is a state OF the shots view, not a third view: tapping Setup while a card is
           open shows the form again with the mark still selected and still highlighted on the map,
@@ -424,7 +448,7 @@ export function ReelPanel(props: ReelPanelProps) {
             read the order as a queue to check, not as a gap between them.
           </p>
         </>
-      ) : (
+      ) : props.view === 'ride' && marks.length > 0 ? null : (
         <>
           <LocationSearch
             value={props.center}
