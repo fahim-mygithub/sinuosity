@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MAX_SHOTS,
-  buildShootRide,
+  appendShot,
+  chainContext,
+  chainRide,
   joinPath,
-  orderShots,
+  nextSteps,
   shotGeometry,
   standing,
+  truncateAt,
+  type Chain,
+  type ChainContext,
   type ShootRide,
 } from './reelRoute';
 import { buildReturnGraph, connectedComponents, findReturnPath } from './returnPath';
@@ -18,6 +22,10 @@ import type { AreaScan } from './overpass';
 // renders as a plausible route while jumping between two roads that never meet. So the load-bearing
 // assertions below are about JOINS — every leg starting where the last one ended — rather than about
 // distances, which are easy to make agree with themselves and still be nonsense.
+//
+// The second load-bearing claim is that the rider's taps survive. A chained ride must ride the shots
+// in the order they were tapped even when that is the long way round; the moment it reorders them to
+// save distance it is the builder this replaced.
 
 /** A junction lattice, 0.01 deg apart, so every node key is exact at the graph's 4 dp rounding. */
 const P = (latStep: number, lonStep: number): LatLng => [
@@ -25,30 +33,37 @@ const P = (latStep: number, lonStep: number): LatLng => [
   Number((-78.9 + lonStep * 0.01).toFixed(4)),
 ];
 
-/** Four ways round a square block: A east along the bottom, B north, C west along the top, D south. */
-const SQUARE = [
-  { id: 'A', name: 'Bottom Road', coords: [P(0, 0), P(0, 2)] },
-  { id: 'B', name: 'Right Road', coords: [P(0, 2), P(1, 2)] },
-  { id: 'C', name: 'Top Road', coords: [P(1, 2), P(1, 0)] },
-  { id: 'D', name: 'Left Road', coords: [P(1, 0), P(0, 0)] },
-];
+interface Way {
+  id: string;
+  name: string;
+  coords: LatLng[];
+}
 
-function scanOf(ways: { id: string; name: string; coords: LatLng[] }[]): AreaScan {
+/** Four ways round a square block: A east along the bottom, B north, C west along the top, D south. */
+const A: Way = { id: 'A', name: 'Bottom Road', coords: [P(0, 0), P(0, 2)] };
+const B: Way = { id: 'B', name: 'Right Road', coords: [P(0, 2), P(1, 2)] };
+const C: Way = { id: 'C', name: 'Top Road', coords: [P(1, 2), P(1, 0)] };
+const D: Way = { id: 'D', name: 'Left Road', coords: [P(1, 0), P(0, 0)] };
+const SQUARE = [A, B, C, D];
+
+/** A road that touches nothing — the islanded corpus, in miniature. */
+const ISLE: Way = { id: 'ISLE', name: 'Island Road', coords: [P(9, 0), P(9, 2)] };
+
+function scanOf(ways: Way[]): AreaScan {
   const roads = ways.map((w) => ({ id: w.id, name: w.name, coords: w.coords }));
   return { roads, corpus: roads, center: P(0, 1), radiusKm: 10, catalog: {} } as unknown as AreaScan;
 }
 
-function mark(roadId: string, startM: number, direction: 'forward' | 'reverse'): ReelMark {
-  const way = SQUARE.find((w) => w.id === roadId)!;
+function mark(way: Way, startM: number, direction: 'forward' | 'reverse'): ReelMark {
   return {
-    id: `${roadId}@${startM}:${direction}`,
-    roadId,
+    id: `${way.id}@${startM}:${direction}`,
+    roadId: way.id,
     roadName: way.name,
     direction,
     travelBearingDeg: 0,
     window: {
-      id: `${roadId}@${startM}`,
-      roadId,
+      id: `${way.id}@${startM}`,
+      roadId: way.id,
       roadName: way.name,
       pts: way.coords,
       startM,
@@ -75,14 +90,29 @@ const WINDOW: ShootWindow = {
 
 const DEPART = new Date('2026-08-02T23:00:00Z');
 
-const opts = (over: Partial<Parameters<typeof buildShootRide>[2]> = {}) => ({
+const opts = (over: Partial<Parameters<typeof chainRide>[2]> = {}) => ({
   from: P(0, 0),
-  targetKm: 40,
   loop: false,
   departAt: DEPART,
   window: WINDOW,
   ...over,
 });
+
+/** The same mark, on a road the corpus does not carry. A distinct id — a mark is identified by its
+ *  window and its direction, so two marks that differ only in parent road would otherwise collide. */
+const orphaned = (m: ReelMark): ReelMark =>
+  ({ ...m, id: `${m.id}:orphan`, roadId: 'NOPE' }) as ReelMark;
+
+/** Tap marks in order, exactly as the map does: ask what can follow, then follow it. */
+function chainOf(ctx: ChainContext, marks: ReelMark[], taps: ReelMark[]): Chain {
+  let chain: Chain = [];
+  for (const t of taps) {
+    const next = appendShot(chain, t, nextSteps(ctx, chain, marks).get(t.id));
+    expect(next).not.toBeNull();
+    chain = next!;
+  }
+  return chain;
+}
 
 /** Metres between two points — the unit the join assertions are stated in. */
 const gapM = (a: LatLng, b: LatLng) => haversine(a, b) * 1000;
@@ -98,103 +128,41 @@ function assertContinuous(ride: ShootRide) {
   }
 }
 
-describe('orderShots', () => {
-  it('returns the empty tour for no stops', () => {
-    expect(orderShots([[0]], false)).toEqual({ order: [], km: 0 });
-  });
-
-  it('finds the cheapest order, not the order it was given', () => {
-    // Start 0. Visiting 2 then 1 costs 1 + 1 + 1 = 3; visiting 1 then 2 costs 10 + 1 + ... worse.
-    const d = [
-      [0, 10, 1],
-      [10, 0, 1],
-      [1, 1, 0],
-    ];
-    const got = orderShots(d, false)!;
-    expect(got.order).toEqual([1, 0]);
-    expect(got.km).toBe(2);
-  });
-
-  it('respects an ASYMMETRIC matrix, where a reversed tour is a different price', () => {
-    // A shot is entered at one end and left at the other, so d[i][j] !== d[j][i] in general. A
-    // solver that assumed symmetry (or improved a tour by reversing a run) would miss this.
-    const d = [
-      [0, 1, 9],
-      [9, 0, 1],
-      [1, 9, 0],
-    ];
-    // 0→1→2 costs 1 + 1 = 2. 0→2→1 costs 9 + 9 = 18.
-    expect(orderShots(d, false)!.order).toEqual([0, 1]);
-    expect(orderShots(d, false)!.km).toBe(2);
-  });
-
-  it('prices the way home when the ride is closed, and can pick a different order because of it', () => {
-    const d = [
-      [0, 1, 2],
-      [1, 0, 1],
-      [2, 1, 0],
-    ];
-    const open = orderShots(d, false)!;
-    const closed = orderShots(d, true)!;
-    expect(closed.km).toBe(open.km + d[open.order[open.order.length - 1] + 1][0]);
-  });
-
-  it('returns null when a stop cannot be reached at all', () => {
-    const d = [
-      [0, 1, Infinity],
-      [1, 0, Infinity],
-      [Infinity, Infinity, 0],
-    ];
-    expect(orderShots(d, false)).toBeNull();
-  });
-
-  it('visits every stop exactly once', () => {
-    const n = 6;
-    const d = Array.from({ length: n + 1 }, (_, i) =>
-      Array.from({ length: n + 1 }, (_, j) => (i === j ? 0 : 1 + ((i * 7 + j * 13) % 9))),
-    );
-    const got = orderShots(d, true)!;
-    expect([...got.order].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5]);
-  });
-});
-
 describe('shotGeometry', () => {
-  const way = SQUARE[0];
-
   it('puts the entry before the exit in travel order, both ways round', () => {
-    const fwd = shotGeometry(mark('A', 400, 'forward'), way.coords)!;
-    const rev = shotGeometry(mark('A', 400, 'reverse'), way.coords)!;
+    const fwd = shotGeometry(mark(A, 400, 'forward'), A.coords)!;
+    const rev = shotGeometry(mark(A, 400, 'reverse'), A.coords)!;
     // Riding forward you arrive from the west end; riding reverse, from the east.
-    expect(gapM(fwd.fromNode, way.coords[0])).toBeLessThan(JOIN_TOL_M);
-    expect(gapM(fwd.toNode, way.coords[1])).toBeLessThan(JOIN_TOL_M);
-    expect(gapM(rev.fromNode, way.coords[1])).toBeLessThan(JOIN_TOL_M);
-    expect(gapM(rev.toNode, way.coords[0])).toBeLessThan(JOIN_TOL_M);
+    expect(gapM(fwd.fromNode, A.coords[0])).toBeLessThan(JOIN_TOL_M);
+    expect(gapM(fwd.toNode, A.coords[1])).toBeLessThan(JOIN_TOL_M);
+    expect(gapM(rev.fromNode, A.coords[1])).toBeLessThan(JOIN_TOL_M);
+    expect(gapM(rev.toNode, A.coords[0])).toBeLessThan(JOIN_TOL_M);
   });
 
   it('rides the same ground either way, in opposite orders', () => {
-    const fwd = shotGeometry(mark('A', 400, 'forward'), way.coords)!;
-    const rev = shotGeometry(mark('A', 400, 'reverse'), way.coords)!;
+    const fwd = shotGeometry(mark(A, 400, 'forward'), A.coords)!;
+    const rev = shotGeometry(mark(A, 400, 'reverse'), A.coords)!;
     expect(rev.shot).toEqual([...fwd.shot].reverse());
     expect(fwd.shotKm).toBeCloseTo(rev.shotKm, 9);
   });
 
   it('joins lead → shot → tail with no gap, so the road through a shot is continuous', () => {
     for (const dir of ['forward', 'reverse'] as const) {
-      const g = shotGeometry(mark('A', 400, dir), way.coords)!;
+      const g = shotGeometry(mark(A, 400, dir), A.coords)!;
       expect(gapM(g.lead[g.lead.length - 1], g.shot[0])).toBeLessThan(1);
       expect(gapM(g.shot[g.shot.length - 1], g.tail[0])).toBeLessThan(1);
     }
   });
 
   it('measures the stretch at roughly the window length it was cut to', () => {
-    const g = shotGeometry(mark('A', 400, 'forward'), way.coords)!;
+    const g = shotGeometry(mark(A, 400, 'forward'), A.coords)!;
     // Resampling lands the cut on 25 m samples, so this is exact to a sample, not to the metre.
     expect(g.shotKm * 1000).toBeGreaterThan(375);
     expect(g.shotKm * 1000).toBeLessThan(425);
   });
 
   it('returns null for a road too short to hold the window it claims', () => {
-    expect(shotGeometry(mark('A', 400, 'forward'), [P(0, 0), P(0, 0)])).toBeNull();
+    expect(shotGeometry(mark(A, 400, 'forward'), [P(0, 0), P(0, 0)])).toBeNull();
   });
 });
 
@@ -225,7 +193,7 @@ describe('standing', () => {
   });
 });
 
-describe('the junction graph the ride routes over', () => {
+describe('the junction graph the chain routes over', () => {
   it('joins a side road that meets the MIDDLE of a through road', () => {
     // The failure this replaces. Endpoint-only noding left a real road network in pieces: measured
     // on the Ellicottville corpus, 298 components over 978 nodes with the largest holding 18.
@@ -244,13 +212,10 @@ describe('the junction graph the ride routes over', () => {
 
   it('leaves genuinely separate roads separate', () => {
     // Two ways that share no vertex do not meet, whatever a bridge looks like from above.
-    const graph = buildReturnGraph([
-      { id: 'A', name: 'A', coords: [P(0, 0), P(0, 2)] },
-      { id: 'B', name: 'B', coords: [P(5, 0), P(5, 2)] },
-    ] as never);
+    const graph = buildReturnGraph([A, ISLE] as never);
     const comps = connectedComponents(graph);
-    expect(comps.of(P(0, 0))).not.toBe(comps.of(P(5, 0)));
-    expect(findReturnPath(graph, P(0, 0), P(5, 2))).toBeNull();
+    expect(comps.of(P(0, 0))).not.toBe(comps.of(P(9, 0)));
+    expect(findReturnPath(graph, P(0, 0), P(9, 2))).toBeNull();
   });
 
   it('keeps a split way under its parent id, so excluding the road excludes all of it', () => {
@@ -262,11 +227,11 @@ describe('the junction graph the ride routes over', () => {
     expect(findReturnPath(graph, P(0, 0), P(0, 2), { excludeWayIds: new Set(['T']) })).toBeNull();
   });
 
-  it('reports component sizes, which is what picking a start depends on', () => {
+  it('reports component sizes, which is what the reachability read depends on', () => {
     const graph = buildReturnGraph([
       { id: 'A', name: 'A', coords: [P(0, 0), P(0, 1), P(0, 2)] },
       { id: 'B', name: 'B', coords: [P(0, 1), P(1, 1)] },
-      { id: 'C', name: 'C', coords: [P(9, 0), P(9, 2)] },
+      ISLE,
     ] as never);
     const comps = connectedComponents(graph);
     const big = comps.of(P(0, 0))!;
@@ -277,95 +242,193 @@ describe('the junction graph the ride routes over', () => {
   });
 });
 
-describe('buildShootRide', () => {
-  const scan = scanOf(SQUARE);
-
-  it('starts on the island the shots are on, not at the junction nearest the pin', () => {
-    // A stub road right next to the pin, connected to nothing. Snapping by distance alone lands on
-    // it and every route then fails — which is exactly what shipped nothing on the real corpus.
-    const stub = { id: 'STUB', name: 'Stub', coords: [P(0, -3), P(0, -2)] };
-    const withStub = scanOf([...SQUARE, stub]);
-    const ride = buildShootRide(
-      [mark('C', 400, 'forward')],
-      withStub,
-      opts({ from: P(0, -3) }),
-    )!;
-    expect(ride).not.toBeNull();
-    expect(ride.shots).toHaveLength(1);
-    // The start is on the square, not on the stub it was dropped next to.
-    expect(gapM(ride.start, P(0, -3))).toBeGreaterThan(500);
-    expect(ride.startOffsetKm).toBeGreaterThan(0.5);
+describe('chainContext', () => {
+  it('carries geometry for every mark whose road the corpus has', () => {
+    const marks = [mark(A, 400, 'forward'), mark(C, 400, 'forward')];
+    const ctx = chainContext(marks, scanOf(SQUARE))!;
+    expect(ctx.geom.size).toBe(2);
   });
 
-  it('measures how far the start is from the pin, so the view can say so', () => {
-    const ride = buildShootRide([mark('A', 400, 'forward')], scan, opts({ from: P(0, 0) }))!;
-    expect(ride.startOffsetKm).toBeCloseTo(0, 2);
+  it('omits a mark on a road the corpus does not carry, rather than inventing one', () => {
+    const orphan = orphaned(mark(A, 400, 'forward'));
+    const ctx = chainContext([mark(C, 400, 'forward'), orphan], scanOf(SQUARE))!;
+    expect(ctx.geom.has(orphan.id)).toBe(false);
+    expect(ctx.geom.size).toBe(1);
   });
+
+  it('is null when there is nothing to chain over', () => {
+    expect(chainContext([], scanOf(SQUARE))).toBeNull();
+    expect(chainContext([mark(A, 400, 'forward')], null)).toBeNull();
+    expect(chainContext([mark(A, 400, 'forward')], { ...scanOf(SQUARE), corpus: [] } as AreaScan)).toBeNull();
+  });
+});
+
+describe('nextSteps', () => {
+  const marks = [mark(A, 400, 'forward'), mark(C, 400, 'forward'), mark(D, 200, 'forward')];
+  const ctx = chainContext(marks, scanOf(SQUARE))!;
+
+  it('opens every shot when the chain is empty — any of them can start one', () => {
+    const steps = nextSteps(ctx, [], marks);
+    expect([...steps.values()].every((s) => s.blocked === null)).toBe(true);
+  });
+
+  it('blocks what is already in the chain, so a shot cannot be filmed twice', () => {
+    const chain = chainOf(ctx, marks, [marks[0]]);
+    expect(nextSteps(ctx, chain, marks).get(marks[0].id)!.blocked).toBe('chained');
+  });
+
+  it('blocks a mark whose road the corpus does not carry', () => {
+    const orphan = orphaned(mark(A, 400, 'forward'));
+    const all = [...marks, orphan];
+    const withOrphan = chainContext(all, scanOf(SQUARE))!;
+    expect(nextSteps(withOrphan, [], all).get(orphan.id)!.blocked).toBe('no-geometry');
+  });
+
+  it('blocks a shot on another island — the corpus fragmentation, made visible', () => {
+    // This is the case the old builder reported as a footnote after the fact. Here the rider sees it
+    // on the arrow before tapping: measured on a real scan, 10 of 40 shots were in this state.
+    const all = [...marks, mark(ISLE, 400, 'forward')];
+    const isled = chainContext(all, scanOf([...SQUARE, ISLE]))!;
+    const chain = chainOf(isled, all, [all[0]]);
+    const steps = nextSteps(isled, chain, all);
+    expect(steps.get(all[3].id)!.blocked).toBe('unreachable');
+    expect(steps.get(all[1].id)!.blocked).toBeNull();
+  });
+
+  it('quotes the WHOLE ride to the next shot, not just the hop between junctions', () => {
+    // Off the current stretch to its junction, across the graph, and on to the next stretch. A
+    // number that counted only the middle would under-quote every hop by up to two roads' length.
+    const chain = chainOf(ctx, marks, [marks[0]]);
+    const step = nextSteps(ctx, chain, marks).get(marks[1].id)!;
+    const from = ctx.geom.get(marks[0].id)!;
+    const to = ctx.geom.get(marks[1].id)!;
+    expect(step.km).toBeGreaterThan(from.tailKm + to.leadKm);
+    expect(step.km).toBeCloseTo(from.tailKm + haversine(P(0, 2), P(1, 2)) + to.leadKm, 6);
+  });
+
+  it('charges nothing for a hop between stretches that already share a junction', () => {
+    // A ridden forward ends at P(0,2); B ridden forward starts there. There is no connector to route
+    // and no distance to add beyond running off one road and on to the next.
+    const pair = [mark(A, 400, 'forward'), mark(B, 200, 'forward')];
+    const adj = chainContext(pair, scanOf(SQUARE))!;
+    const chain = chainOf(adj, pair, [pair[0]]);
+    const step = nextSteps(adj, chain, pair).get(pair[1].id)!;
+    expect(step.blocked).toBeNull();
+    expect(step.path).toEqual([]);
+    expect(step.km).toBeCloseTo(
+      adj.geom.get(pair[0].id)!.tailKm + adj.geom.get(pair[1].id)!.leadKm,
+      6,
+    );
+  });
+});
+
+describe('appendShot', () => {
+  const marks = [mark(A, 400, 'forward'), mark(C, 400, 'forward')];
+  const ctx = chainContext(marks, scanOf(SQUARE))!;
+
+  it('refuses a shot that cannot follow, rather than chaining a jump', () => {
+    const all = [...marks, mark(ISLE, 400, 'forward')];
+    const isled = chainContext(all, scanOf([...SQUARE, ISLE]))!;
+    const chain = chainOf(isled, all, [all[0]]);
+    const steps = nextSteps(isled, chain, all);
+    expect(appendShot(chain, all[2], steps.get(all[2].id))).toBeNull();
+    expect(appendShot(chain, all[0], steps.get(all[0].id))).toBeNull();
+    expect(appendShot(chain, all[1], undefined)).toBeNull();
+  });
+
+  it('keeps the routed hop on the link, so the ride never re-routes what the rider chose', () => {
+    const chain = chainOf(ctx, marks, [marks[0], marks[1]]);
+    const step = nextSteps(ctx, [chain[0]], marks).get(marks[1].id)!;
+    expect(chain[1].connector).toEqual(step.path);
+    expect(chain[1].transitKm).toBe(step.km);
+    expect(chain[0].transitKm).toBe(0);
+  });
+});
+
+describe('truncateAt', () => {
+  const marks = [mark(A, 400, 'forward'), mark(C, 400, 'forward'), mark(D, 200, 'forward')];
+  const ctx = chainContext(marks, scanOf(SQUARE))!;
+
+  it('cuts the tapped shot AND everything after it', () => {
+    const chain = chainOf(ctx, marks, [marks[0], marks[1], marks[2]]);
+    expect(truncateAt(chain, marks[1].id).map((l) => l.mark.id)).toEqual([marks[0].id]);
+    expect(truncateAt(chain, marks[2].id)).toHaveLength(2);
+    expect(truncateAt(chain, marks[0].id)).toEqual([]);
+  });
+
+  it('leaves a chain alone when the shot is not in it', () => {
+    const chain = chainOf(ctx, marks, [marks[0]]);
+    expect(truncateAt(chain, 'nope')).toBe(chain);
+  });
+});
+
+describe('chainRide', () => {
+  const marks = [mark(A, 400, 'forward'), mark(C, 400, 'forward')];
+  const ctx = chainContext(marks, scanOf(SQUARE))!;
 
   it('chains two shots on opposite sides of a block into one continuous ride', () => {
-    const ride = buildShootRide([mark('A', 400, 'forward'), mark('C', 400, 'forward')], scan, opts())!;
+    const ride = chainRide(ctx, chainOf(ctx, marks, [marks[0], marks[1]]), opts())!;
     expect(ride).not.toBeNull();
     expect(ride.shots).toHaveLength(2);
     assertContinuous(ride);
-    // The drawn line starts at the ride's start and every shot appears in it.
-    expect(gapM(ride.coords[0], ride.start)).toBeLessThan(JOIN_TOL_M);
     expect(ride.legs.filter((l) => l.kind === 'shot')).toHaveLength(2);
+    expect(ride.legs.filter((l) => l.kind === 'connector')).toHaveLength(1);
+  });
+
+  it('rides them in the order they were TAPPED, both ways round', () => {
+    // The whole point of hand-chaining. A builder that reordered for distance would return the same
+    // ride for both of these, and the rider's second tap would silently become their first shot.
+    const forwards = chainRide(ctx, chainOf(ctx, marks, [marks[0], marks[1]]), opts())!;
+    const backwards = chainRide(ctx, chainOf(ctx, marks, [marks[1], marks[0]]), opts())!;
+    expect(forwards.shots.map((s) => s.mark.id)).toEqual([marks[0].id, marks[1].id]);
+    expect(backwards.shots.map((s) => s.mark.id)).toEqual([marks[1].id, marks[0].id]);
+    assertContinuous(backwards);
+  });
+
+  it('starts at the first stretch, and measures how far that is from the pin', () => {
+    const chain = chainOf(ctx, marks, [marks[1]]);
+    const ride = chainRide(ctx, chain, opts({ from: P(0, 0) }))!;
+    expect(ride.start).toEqual(ctx.geom.get(marks[1].id)!.shot[0]);
+    expect(gapM(ride.coords[0], ride.start)).toBeLessThan(1);
+    // C is the far side of the block from the pin, and the ride says so rather than routing there.
+    expect(ride.startOffsetKm).toBeGreaterThan(1);
   });
 
   it('rides each shot in its own direction, not whichever way is convenient', () => {
-    // C reversed must be ridden east-to-west's opposite; the leg drawn has to match the mark.
-    const m = mark('C', 400, 'reverse');
-    const ride = buildShootRide([m], scan, opts())!;
-    const leg = ride.legs.find((l) => l.markId === m.id)!;
-    const geom = shotGeometry(m, SQUARE[2].coords)!;
-    expect(leg.coords).toEqual(geom.shot);
+    const m = mark(C, 400, 'reverse');
+    const rev = chainContext([m], scanOf(SQUARE))!;
+    const ride = chainRide(rev, chainOf(rev, [m], [m]), opts())!;
+    expect(ride.legs.find((l) => l.markId === m.id)!.coords).toEqual(shotGeometry(m, C.coords)!.shot);
   });
 
-  it('closes a loop back to the start when asked', () => {
-    const ride = buildShootRide(
-      [mark('A', 400, 'forward'), mark('C', 400, 'forward')],
-      scan,
-      opts({ loop: true }),
-    )!;
+  it('closes a loop back to the start when asked, over roads it has not filmed', () => {
+    const ride = chainRide(ctx, chainOf(ctx, marks, [marks[0], marks[1]]), opts({ loop: true }))!;
     assertContinuous(ride);
-    expect(ride.returnKind).not.toBeNull();
-    const last = ride.coords[ride.coords.length - 1];
-    expect(gapM(last, ride.start)).toBeLessThan(JOIN_TOL_M);
+    expect(ride.returnKind).toBe('circuit');
+    expect(gapM(ride.coords[ride.coords.length - 1], ride.start)).toBeLessThan(JOIN_TOL_M);
+  });
+
+  it('calls a retrace a retrace when there is no other way home', () => {
+    // A dead-end pair: nothing joins the far end of B back to the near end of A except A and B.
+    const pair = [mark(A, 400, 'forward'), mark(B, 200, 'forward')];
+    const deadEnd = chainContext(pair, scanOf([A, B]))!;
+    const ride = chainRide(deadEnd, chainOf(deadEnd, pair, pair), opts({ loop: true }))!;
+    expect(ride.returnKind).toBe('retrace');
+    expect(gapM(ride.coords[ride.coords.length - 1], ride.start)).toBeLessThan(JOIN_TOL_M);
   });
 
   it('leaves the ride open when a loop was not asked for', () => {
-    const ride = buildShootRide([mark('A', 400, 'forward')], scan, opts())!;
+    const ride = chainRide(ctx, chainOf(ctx, marks, [marks[0]]), opts())!;
     expect(ride.returnKind).toBeNull();
-    expect(ride.shape).toBe('out-and-back');
     expect(ride.legs.some((l) => l.kind === 'return')).toBe(false);
   });
 
-  it('keeps the ride inside the distance the rider set, and says what it dropped', () => {
-    const marks = [mark('A', 400, 'forward'), mark('C', 400, 'forward')];
-    const tight = buildShootRide(marks, scan, opts({ targetKm: 2 }))!;
-    expect(tight.km).toBeLessThanOrEqual(2);
-    expect(tight.shots.length).toBeLessThan(2);
-    expect(tight.dropped.some((d) => d.reason === 'budget')).toBe(true);
-  });
-
-  it('takes shots in shortlist order — the ride matches the list, not the geography', () => {
-    // Both fit, but only one at a time. The FIRST-ranked mark is the one that must survive.
-    const first = mark('A', 400, 'forward');
-    const second = mark('C', 400, 'forward');
-    const ride = buildShootRide([first, second], scan, opts({ targetKm: 2 }))!;
-    expect(ride.shots[0].mark.id).toBe(first.id);
-    expect(ride.dropped[0].mark.id).toBe(second.id);
-  });
-
   it('schedules arrivals in riding order, at the planning speed', () => {
-    const ride = buildShootRide(
-      [mark('A', 400, 'forward'), mark('C', 400, 'forward')],
-      scan,
-      opts(),
-    )!;
+    const ride = chainRide(ctx, chainOf(ctx, marks, [marks[0], marks[1]]), opts())!;
     expect(ride.shots[0].at.getTime()).toBeLessThan(ride.shots[1].at.getTime());
     expect(ride.shots[0].at.getTime()).toBeGreaterThanOrEqual(DEPART.getTime());
     expect(ride.shots.map((s) => s.order)).toEqual([1, 2]);
+    expect(ride.shots[0].km).toBe(0);
     // Distance and clock are the same quantity twice; they may not disagree by more than a Date can
     // represent. `finish` is built by adding milliseconds to a Date, which truncates, so the two
     // agree to within one — asking for more precision tests the clock's resolution, not the ride.
@@ -374,29 +437,11 @@ describe('buildShootRide', () => {
 
   it('flags a shot the rider would reach after the light has gone', () => {
     const dusk = { ...WINDOW, end: new Date(DEPART.getTime() + 1000) };
-    const ride = buildShootRide([mark('A', 400, 'forward')], scan, opts({ window: dusk }))!;
-    expect(ride.shots[0].light).toBe('late');
+    const ride = chainRide(ctx, chainOf(ctx, marks, [marks[0], marks[1]]), opts({ window: dusk }))!;
+    expect(ride.shots[1].light).toBe('late');
   });
 
-  it('reports a mark on a road the corpus does not have, rather than dropping it silently', () => {
-    const orphan = mark('A', 400, 'forward');
-    (orphan as { roadId: string }).roadId = 'NOPE';
-    const ride = buildShootRide([mark('C', 400, 'forward'), orphan], scan, opts())!;
-    expect(ride.dropped.find((d) => d.mark.id === orphan.id)?.reason).toBe('unreachable');
-  });
-
-  it('caps the shots in one ride and names the cap rather than truncating quietly', () => {
-    // More candidates than MAX_SHOTS, all on the same block so all are reachable and cheap.
-    const many = Array.from({ length: MAX_SHOTS + 4 }, (_, i) =>
-      mark(SQUARE[i % 4].id, 200 + (i % 2) * 400, 'forward'),
-    ).map((m, i) => ({ ...m, id: `m${i}` }) as ReelMark);
-    const ride = buildShootRide(many, scan, opts({ targetKm: 500 }))!;
-    expect(ride.shots.length).toBeLessThanOrEqual(MAX_SHOTS);
-    expect(ride.shots.length + ride.dropped.length).toBe(many.length);
-  });
-
-  it('returns null rather than an empty ride when there is nothing to work with', () => {
-    expect(buildShootRide([], scan, opts())).toBeNull();
-    expect(buildShootRide([mark('A', 400, 'forward')], { ...scan, corpus: [] } as AreaScan, opts())).toBeNull();
+  it('has nothing to draw for an empty chain', () => {
+    expect(chainRide(ctx, [], opts())).toBeNull();
   });
 });

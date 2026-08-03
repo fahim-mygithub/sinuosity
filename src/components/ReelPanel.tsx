@@ -218,6 +218,10 @@ export const REEL_REBUILD_DEBOUNCE_MS = 700;
  * `shots` rather than a fourth one: chaining does not change what was scanned or how it was scored,
  * so leaving the ride and coming back must not cost a rebuild. The shortlist stays exactly as it
  * was and the ride is a reading of it.
+ *
+ * It IS the view that changes what a tap on the map means — in `ride` an arrow joins the chain
+ * instead of opening a card. That is a mode in all but name, and it earns the exception because the
+ * alternative is a fourth control for something the rider is already looking at.
  */
 export type ReelView = 'setup' | 'shots' | 'ride';
 
@@ -362,7 +366,7 @@ export function ReelPanel(props: ReelPanelProps) {
             aria-pressed={props.view === 'ride'}
             className={`min-h-[40px] rounded-lg text-[11px] font-bold transition-all ${props.view === 'ride' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
           >
-            Ride{props.ride.ride ? ` · ${props.ride.ride.shots.length}` : ''}
+            Ride{props.ride.chain.length ? ` · ${props.ride.chain.length}` : ''}
           </button>
         </div>
       )}

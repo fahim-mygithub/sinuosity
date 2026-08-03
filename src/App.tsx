@@ -35,7 +35,16 @@ import {
   ReelPanel, markColor, dayAnchor, holdInstant, peakInstant, reelPool, reelShortlist,
   toDateInput, toTimeInput, REEL_REBUILD_DEBOUNCE_MS, type ReelView,
 } from './components/ReelPanel';
-import { buildShootRide, type ShootRide } from './lib/reelRoute';
+import {
+  appendShot,
+  chainContext,
+  chainRide,
+  nextSteps,
+  truncateAt,
+  type Chain,
+  type NextStep,
+  type ShootRide,
+} from './lib/reelRoute';
 import { enrichMarks, type ReelOptions } from './lib/reelScore';
 import { shootWindow } from './lib/reelPlan';
 import { REEL_WEIGHTS, type CameraAim, type ReelMark, type ReelMetrics } from './lib/reelTypes';
@@ -102,22 +111,50 @@ function routeBoundsCoords(r: ScenicRoute): LatLng[] {
  * Direction of travel is half of what this feature outputs — the same 400 m of road ridden the
  * other way is a different mark, with the backdrop on the other side and the sun moved from ahead
  * to behind — and a dot cannot say which way to ride. The glyph rotates to `travelBearingDeg`; the
- * rank badge is outside the rotated element so it stays upright and legible at any bearing.
+ * badge is outside the rotated element so it stays upright and legible at any bearing.
+ *
+ * `label` IS NULLABLE, and that is what keeps the ride view readable. In the shots view the badge is
+ * the mark's rank; in the ride view it is its position in the chain — two numberings for the same
+ * arrows, and showing both at once would invite reading chain position as quality. So the ride view
+ * numbers the shots the rider has chained and leaves every other arrow unnumbered.
+ *
+ * `dim` marks an arrow that cannot be tapped next: no route to it through the scanned network from
+ * where the chain currently ends. Drawn rather than hidden, because "there is no road from here to
+ * there" is a fact about the roads worth seeing, and an arrow that vanished would read as a bug.
  */
-function reelMarkIcon(bearingDeg: number, color: string, rank: number, active: boolean): L.DivIcon {
+/**
+ * An arrow the rider cannot tap next: no route to it from where the chain ends, or no geometry for
+ * it at all.
+ *
+ * `chained` is deliberately NOT blocked — tapping a shot already in the ride cuts the chain back to
+ * it, which is the undo, so those arrows stay live.
+ */
+const isBlocked = (s: NextStep | undefined): boolean =>
+  s?.blocked === 'unreachable' || s?.blocked === 'no-geometry';
+
+function reelMarkIcon(
+  bearingDeg: number,
+  color: string,
+  label: number | null,
+  active: boolean,
+  dim = false,
+): L.DivIcon {
   const size = active ? 40 : 32;
   return L.divIcon({
     className: '',
     html:
-      `<div style="position:relative;width:${size}px;height:${size}px">` +
+      `<div style="position:relative;width:${size}px;height:${size}px${dim ? ';opacity:.28' : ''}">` +
       `<div style="width:100%;height:100%;transform:rotate(${bearingDeg.toFixed(1)}deg)">` +
       `<svg viewBox="0 0 24 24" width="${size}" height="${size}">` +
       `<circle cx="12" cy="12" r="10.5" fill="#020617" fill-opacity=".82" stroke="${color}" stroke-width="${active ? 2.6 : 1.8}"/>` +
       `<path d="M12 4.4 L17.4 17.2 L12 14.3 L6.6 17.2 Z" fill="${color}"/>` +
       `</svg></div>` +
-      `<div style="position:absolute;left:50%;top:100%;transform:translate(-50%,-3px);` +
-      `font:800 9px/1.3 ui-sans-serif,system-ui,sans-serif;color:#e2e8f0;background:rgba(2,6,23,.85);` +
-      `border-radius:4px;padding:0 3px">${rank}</div></div>`,
+      (label === null
+        ? ''
+        : `<div style="position:absolute;left:50%;top:100%;transform:translate(-50%,-3px);` +
+          `font:800 9px/1.3 ui-sans-serif,system-ui,sans-serif;color:#e2e8f0;background:rgba(2,6,23,.85);` +
+          `border-radius:4px;padding:0 3px">${label}</div>`) +
+      `</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -189,13 +226,12 @@ export default function App() {
   const [reelHasRun, setReelHasRun] = useState(false);
   const [reelView, setReelView] = useState<ReelView>('setup');
   const [reelAim, setReelAim] = useState<CameraAim>('side');
-  // The chained ride. Held as state (unlike the pool) because the whole ride view and the map layer
-  // render from it, and cleared whenever the shortlist beneath it moves — a ride built from marks
-  // that no longer exist would draw a route to shots the rider can no longer open.
-  const [reelRide, setReelRide] = useState<ShootRide | null>(null);
-  const [reelRideBuilding, setReelRideBuilding] = useState(false);
-  const [reelRideKm, setReelRideKm] = useState(60);
-  const [reelRideLoop, setReelRideLoop] = useState(true);
+  // The rider's taps, in order — the ride they are drawing by hand. THE ONLY ride state: everything
+  // else about the ride (its legs, its clock, its length) is derived from this and the shortlist, so
+  // there is nothing to keep in step. Cleared whenever the shortlist beneath it moves, because a
+  // chain of marks that no longer exist would draw a route to shots the rider can no longer open.
+  const [reelChain, setReelChain] = useState<Chain>([]);
+  const [reelRideLoop, setReelRideLoop] = useState(false);
   const [reelWeights, setReelWeights] = useState<ReelMetrics>(REEL_WEIGHTS);
   const [reelDate, setReelDate] = useState(() => toDateInput(new Date()));
   // Default to the middle of tonight's best light at the rider's home, so the tab opens on a real
@@ -818,33 +854,111 @@ export default function App() {
     if (sheet.state === 'peek') sheet.snapTo('full');
   }, [sheet.state, sheet.snapTo]);
 
-  // Latest select handler, held in a ref so the marker wiring below never goes stale and the whole
-  // layer set does not get rebuilt every time the sheet snaps. Same idiom as onCircleDropRef.
-  const onReelSelectRef = useRef<(m: ReelMark | null) => void>(() => {});
-  useEffect(() => { onReelSelectRef.current = selectReelMark; }, [selectReelMark]);
+  /**
+   * Everything the chain needs about the scanned network: the junction graph, and each mark's entry
+   * and exit on it.
+   *
+   * Keyed on `reelMarks` while reading the scan from a ref, which is sound because the ref LEADS the
+   * state: every path that sets a scan sets `reelScanRef.current` before calling `setReelMarks`, and
+   * every path that clears one clears both. So a marks change is exactly the set of moments the
+   * context could have gone stale.
+   */
+  const reelChainCtx = useMemo(
+    () => chainContext(reelMarks, reelScanRef.current),
+    [reelMarks],
+  );
 
-  // Each mark is drawn as the actual 400 m stretch plus an arrow at its midpoint pointing the way
-  // to ride it. The stretch matters as much as the pin: a rider needs to see which piece of road
-  // the card is talking about, not just roughly where it is.
-  const drawReelMarks = useCallback((marks: ReelMark[], selectedId: string | null) => {
-    marks.forEach((m, i) => {
-      const color = markColor(m);
-      const active = m.id === selectedId;
-      const open = () => onReelSelectRef.current(m);
-      const hit = L.polyline(m.window.pts, { color, weight: 18, opacity: 0 });
-      const line = L.polyline(m.window.pts, { color, weight: active ? 6 : 4, opacity: active ? 1 : 0.85 });
-      hit.on('click', open);
-      line.on('click', open);
-      addLayer(hit);
-      addLayer(line);
-      const arrow = L.marker(m.window.mid, {
-        icon: reelMarkIcon(m.travelBearingDeg, color, i + 1, active),
-        zIndexOffset: active ? 1000 : 0,
-      });
-      arrow.on('click', open);
-      addLayer(arrow);
+  /**
+   * Which arrows can follow the chain as it stands — one graph search, re-run per tap.
+   *
+   * Computed here rather than inside the tap handler so the map and the panel read the SAME answer:
+   * the dimmed arrow the rider sees and the guard that refuses their tap are one value, and cannot
+   * disagree. Cheap enough to be a render-time memo — the old builder ran seventeen of these searches
+   * in 10-76 ms, and this is one.
+   */
+  const reelSteps = useMemo(
+    () =>
+      reelChainCtx ? nextSteps(reelChainCtx, reelChain, reelMarks) : new Map<string, NextStep>(),
+    [reelChainCtx, reelChain, reelMarks],
+  );
+
+  /**
+   * What a tap on an arrow means in the ride view: add it to the chain, or cut back to it.
+   *
+   * Deliberately NOT a second control. The rider is already looking at the arrows and already tapping
+   * them; making chaining a separate armed mode would put a state between them and the map that they
+   * have to remember they are in. Tapping a shot already in the chain cuts back to just before it,
+   * which makes the last tap its own undo — see {@link truncateAt} for why removal from the middle
+   * is not offered.
+   */
+  const tapReelMark = useCallback((m: ReelMark) => {
+    setReelChain((chain) => {
+      if (chain.some((l) => l.mark.id === m.id)) return truncateAt(chain, m.id);
+      return appendShot(chain, m, reelSteps.get(m.id)) ?? chain;
     });
-  }, [addLayer]);
+    if (sheet.state === 'peek') sheet.snapTo('full');
+  }, [reelSteps, sheet.state, sheet.snapTo]);
+
+  // Latest tap handler, held in a ref so the marker wiring below never goes stale and the whole
+  // layer set does not get rebuilt every time the sheet snaps. Same idiom as onCircleDropRef.
+  const onReelTapRef = useRef<(m: ReelMark) => void>(() => {});
+  useEffect(() => {
+    onReelTapRef.current = reelView === 'ride' ? tapReelMark : selectReelMark;
+  }, [reelView, tapReelMark, selectReelMark]);
+
+  /**
+   * Each mark is drawn as the actual 400 m stretch plus an arrow at its midpoint pointing the way to
+   * ride it. The stretch matters as much as the pin: a rider needs to see which piece of road the
+   * card is talking about, not just roughly where it is.
+   *
+   * `label` and `dim` are how the ride view re-reads the same arrows without a second layer set —
+   * see {@link reelMarkIcon} for what each means and why an unreachable arrow is drawn faintly
+   * rather than removed.
+   *
+   * `dim` RETURNS THE REASON rather than a boolean, and that is what stops a dimmed arrow being a
+   * dead tap. Tapping one cannot chain it, so without this it would do nothing at all and read as a
+   * broken control; the reason becomes the arrow's tooltip, which Leaflet opens on hover and on tap.
+   * One function rather than a flag plus a message, so the two cannot disagree about which arrows
+   * are dimmed.
+   */
+  const drawReelMarks = useCallback(
+    (
+      marks: ReelMark[],
+      selectedId: string | null,
+      opts?: { label?: (m: ReelMark, i: number) => number | null; dim?: (m: ReelMark) => string | null },
+    ) => {
+      marks.forEach((m, i) => {
+        const color = markColor(m);
+        const active = m.id === selectedId;
+        const dimmed = opts?.dim?.(m) ?? null;
+        const open = () => onReelTapRef.current(m);
+        const hit = L.polyline(m.window.pts, { color, weight: 18, opacity: 0 });
+        const line = L.polyline(m.window.pts, {
+          color,
+          weight: active ? 6 : 4,
+          opacity: dimmed ? 0.22 : active ? 1 : 0.85,
+        });
+        hit.on('click', open);
+        line.on('click', open);
+        addLayer(hit);
+        addLayer(line);
+        const arrow = L.marker(m.window.mid, {
+          icon: reelMarkIcon(
+            m.travelBearingDeg,
+            color,
+            opts?.label ? opts.label(m, i) : i + 1,
+            active,
+            dimmed !== null,
+          ),
+          zIndexOffset: active ? 1000 : 0,
+        });
+        arrow.on('click', open);
+        if (dimmed) arrow.bindTooltip(dimmed, { direction: 'top' });
+        addLayer(arrow);
+      });
+    },
+    [addLayer],
+  );
 
   // Exactly what the map draws, as a string: the marks in rank order, each with the two things the
   // arrow encodes. Redrawing on the array's identity instead would rebuild ~120 Leaflet layers on
@@ -887,69 +1001,78 @@ export default function App() {
     );
   }, [addLayer]);
 
+  /**
+   * The chain, assembled into a drivable ride.
+   *
+   * Derived rather than built on a button, which is the whole shape of the change: a hand-drawn ride
+   * has to be true of the taps THE MOMENT they land, or the rider is looking at a route for a chain
+   * they have already altered. Assembly is pure and cheap — the routing happened in `reelSteps`, and
+   * this only stitches polylines the chain is already carrying — so there is nothing to defer and no
+   * pending state to show.
+   */
+  const reelRide = useMemo(
+    () =>
+      reelChainCtx
+        ? chainRide(reelChainCtx, reelChain, {
+            from: scanCenterLatLng,
+            loop: reelRideLoop,
+            departAt: reelAt,
+            window: reelShoot,
+          })
+        : null,
+    [reelChainCtx, reelChain, scanCenterLatLng, reelRideLoop, reelAt, reelShoot],
+  );
+
   const reelRideDrawKey = useMemo(
     () => (reelRide ? `${reelRide.shots.map((s) => s.mark.id).join('|')}@${Math.round(reelRide.km * 100)}` : ''),
     [reelRide],
   );
 
+  /** Which arrows are dimmed, as a string — the map's read of `reelSteps`, and its redraw key. */
+  const reelBlockedKey = useMemo(() => {
+    if (reelView !== 'ride') return '';
+    const out: string[] = [];
+    for (const [id, s] of reelSteps) if (isBlocked(s)) out.push(id);
+    return out.join('|');
+  }, [reelView, reelSteps]);
+
   // All Reel drawing lives here rather than being scattered through the handlers, so the map is a
-  // pure function of (marks, selection, ride) and cannot fall out of step with the list.
+  // pure function of (marks, selection, chain) and cannot fall out of step with the list.
   useEffect(() => {
     if (!ready || !map || tab !== 'reel') return;
     clearLayers();
     drawScanCircle(scanCenterLatLng);
-    // In the ride view the marks drawn are the RIDE's, in riding order — `drawReelMarks` numbers by
-    // array position, so passing the ride's own shots is what makes the number on the map the number
-    // in the itinerary. Drawing the whole shortlist here instead would put shortlist ranks on a map
-    // of a ride that visits them in a different order, which is the one confusion worth spending a
-    // branch to avoid.
-    if (reelView === 'ride' && reelRide) {
-      drawReelRide(reelRide);
-      drawReelMarks(reelRide.shots.map((s) => s.mark), reelSelectedId);
+    if (reelView === 'ride') {
+      // THE WHOLE SHORTLIST, not just the chain: the rider is choosing what to tap next, so every
+      // arrow has to stay on the map and stay tappable. What changes is what the badge means — a
+      // number here is a position in the chain, and unchained arrows carry none, so chain order and
+      // shortlist rank can never be read off the same map. See {@link reelMarkIcon}.
+      if (reelRide) drawReelRide(reelRide);
+      const order = new Map(reelChain.map((l, i) => [l.mark.id, i + 1]));
+      drawReelMarks(reelMarks, reelSelectedId, {
+        label: (m) => order.get(m.id) ?? null,
+        dim: (m) =>
+          !isBlocked(reelSteps.get(m.id))
+            ? null
+            : reelSteps.get(m.id)?.blocked === 'no-geometry'
+              ? 'The scan does not carry this road, so there is nothing to chain'
+              : reelChain.length === 0
+                ? 'No road route to this one from the scanned network'
+                : 'No road route to this one from where the ride ends',
+      });
     } else {
       drawReelMarks(reelMarks, reelSelectedId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps — keyed on what is drawn, not on identity
-  }, [ready, map, tab, reelDrawKey, reelSelectedId, reelView, reelRideDrawKey]);
+  }, [ready, map, tab, reelDrawKey, reelSelectedId, reelView, reelRideDrawKey, reelBlockedKey]);
 
-  /**
-   * Chain the shortlist into one ride.
-   *
-   * Deferred by a turn of the event loop rather than run inline: the build is pure CPU (one graph
-   * search per candidate, then an exact tour) and blocking the click handler would leave the button
-   * showing its idle label for the whole of it. The delay buys the pending state a paint, nothing
-   * more — there is no network here to wait on.
-   */
-  const buildReelRide = useCallback(() => {
-    const scan = reelScanRef.current;
-    if (!scan || !reelMarks.length) return;
-    setReelRideBuilding(true);
-    setTimeout(() => {
-      try {
-        setReelRide(
-          buildShootRide(reelMarks, scan, {
-            from: scanCenterLatLng,
-            targetKm: reelRideKm,
-            loop: reelRideLoop,
-            departAt: reelAt,
-            window: reelShoot,
-          }),
-        );
-      } catch {
-        // A ride is a convenience over a shortlist that is already on screen and already useful, so
-        // a failure to chain must not take the shortlist down with it.
-        setReelRide(null);
-      } finally {
-        setReelRideBuilding(false);
-      }
-    }, 0);
-  }, [reelMarks, scanCenterLatLng, reelRideKm, reelRideLoop, reelAt, reelShoot]);
-
-  // A ride outlives nothing. The moment the shortlist beneath it moves — a new scan, a weight nudge,
-  // the refinement landing — the ride is about marks that may no longer be on screen, so it goes.
+  // A chain outlives nothing. The moment the shortlist beneath it moves — a new scan, a weight
+  // nudge, the refinement landing — it is a route through marks that may no longer be on screen, so
+  // it goes. Losing a hand-drawn chain costs the rider more than losing a generated ride did, which
+  // is why the panel says the refinement is still running while it is.
   const reelMarkIds = useMemo(() => reelMarks.map((m) => m.id).join('|'), [reelMarks]);
   useEffect(() => {
-    setReelRide(null);
+    setReelChain([]);
   }, [reelMarkIds]);
 
   /** The whole ride as one navigable link: the fun and the transit, with the way home as the return. */
@@ -1625,15 +1748,15 @@ export default function App() {
               view={reelView}
               onViewChange={setReelView}
               ride={{
+                chain: reelChain,
                 ride: reelRide,
-                building: reelRideBuilding,
+                steps: reelSteps,
                 markCount: reelMarks.length,
                 units,
-                targetKm: reelRideKm,
-                onTargetKmChange: setReelRideKm,
                 loop: reelRideLoop,
                 onLoopChange: setReelRideLoop,
-                onBuild: buildReelRide,
+                onTruncate: (id) => setReelChain((c) => truncateAt(c, id)),
+                onClear: () => setReelChain([]),
                 onSelectShot: selectReelMark,
                 mapsHref: reelRideHref,
               }}
