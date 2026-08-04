@@ -118,32 +118,23 @@ function routeBoundsCoords(r: ScenicRoute): LatLng[] {
  * arrows, and showing both at once would invite reading chain position as quality. So the ride view
  * numbers the shots the rider has chained and leaves every other arrow unnumbered.
  *
- * `dim` marks an arrow that cannot be tapped next: no route to it through the scanned network from
- * where the chain currently ends. Drawn rather than hidden, because "there is no road from here to
- * there" is a fact about the roads worth seeing, and an arrow that vanished would read as a bug.
+ * NO ARROW IS EVER DRAWN AS UNAVAILABLE. A previous revision dimmed the ones the scanned network
+ * could not route to, and on a real 30 km Buffalo scan that greyed out 33 of 39 arrows after a
+ * single tap — sometimes every one of them. The corpus carries no residential streets, so its
+ * silence is not evidence that a rider cannot get somewhere. Every arrow stays live; where the
+ * network has nothing, the ride draws that hop as the straight line it is and says so.
  */
-/**
- * An arrow the rider cannot tap next: no route to it from where the chain ends, or no geometry for
- * it at all.
- *
- * `chained` is deliberately NOT blocked — tapping a shot already in the ride cuts the chain back to
- * it, which is the undo, so those arrows stay live.
- */
-const isBlocked = (s: NextStep | undefined): boolean =>
-  s?.blocked === 'unreachable' || s?.blocked === 'no-geometry';
-
 function reelMarkIcon(
   bearingDeg: number,
   color: string,
   label: number | null,
   active: boolean,
-  dim = false,
 ): L.DivIcon {
   const size = active ? 40 : 32;
   return L.divIcon({
     className: '',
     html:
-      `<div style="position:relative;width:${size}px;height:${size}px${dim ? ';opacity:.28' : ''}">` +
+      `<div style="position:relative;width:${size}px;height:${size}px">` +
       `<div style="width:100%;height:100%;transform:rotate(${bearingDeg.toFixed(1)}deg)">` +
       `<svg viewBox="0 0 24 24" width="${size}" height="${size}">` +
       `<circle cx="12" cy="12" r="10.5" fill="#020617" fill-opacity=".82" stroke="${color}" stroke-width="${active ? 2.6 : 1.8}"/>` +
@@ -869,12 +860,12 @@ export default function App() {
   );
 
   /**
-   * Which arrows can follow the chain as it stands — one graph search, re-run per tap.
+   * What each arrow would cost to add to the chain — one graph search, re-run per tap.
    *
-   * Computed here rather than inside the tap handler so the map and the panel read the SAME answer:
-   * the dimmed arrow the rider sees and the guard that refuses their tap are one value, and cannot
-   * disagree. Cheap enough to be a render-time memo — the old builder ran seventeen of these searches
-   * in 10-76 ms, and this is one.
+   * Nothing here decides whether a tap is ALLOWED; every tap is. What the search settles is whether
+   * the hop is real road (and how long) or a straight line the scan cannot describe, which is what
+   * the appended link carries and what the ride then reports. Cheap enough to be a render-time memo:
+   * the old solver ran seventeen of these searches in 10-76 ms, and this is one.
    */
   const reelSteps = useMemo(
     () =>
@@ -890,6 +881,9 @@ export default function App() {
    * have to remember they are in. Tapping a shot already in the chain cuts back to just before it,
    * which makes the last tap its own undo — see {@link truncateAt} for why removal from the middle
    * is not offered.
+   *
+   * ANY ARROW, ALWAYS. `appendShot` only declines a mark already in the chain, which is the branch
+   * above, so the `?? chain` is a type guard rather than a case the rider can reach.
    */
   const tapReelMark = useCallback((m: ReelMark) => {
     setReelChain((chain) => {
@@ -911,49 +905,30 @@ export default function App() {
    * ride it. The stretch matters as much as the pin: a rider needs to see which piece of road the
    * card is talking about, not just roughly where it is.
    *
-   * `label` and `dim` are how the ride view re-reads the same arrows without a second layer set —
-   * see {@link reelMarkIcon} for what each means and why an unreachable arrow is drawn faintly
-   * rather than removed.
-   *
-   * `dim` RETURNS THE REASON rather than a boolean, and that is what stops a dimmed arrow being a
-   * dead tap. Tapping one cannot chain it, so without this it would do nothing at all and read as a
-   * broken control; the reason becomes the arrow's tooltip, which Leaflet opens on hover and on tap.
-   * One function rather than a flag plus a message, so the two cannot disagree about which arrows
-   * are dimmed.
+   * `label` is how the ride view re-reads the same arrows without a second layer set — see
+   * {@link reelMarkIcon} for what a null one means, and why no arrow is ever drawn as unavailable.
    */
   const drawReelMarks = useCallback(
     (
       marks: ReelMark[],
       selectedId: string | null,
-      opts?: { label?: (m: ReelMark, i: number) => number | null; dim?: (m: ReelMark) => string | null },
+      label?: (m: ReelMark, i: number) => number | null,
     ) => {
       marks.forEach((m, i) => {
         const color = markColor(m);
         const active = m.id === selectedId;
-        const dimmed = opts?.dim?.(m) ?? null;
         const open = () => onReelTapRef.current(m);
         const hit = L.polyline(m.window.pts, { color, weight: 18, opacity: 0 });
-        const line = L.polyline(m.window.pts, {
-          color,
-          weight: active ? 6 : 4,
-          opacity: dimmed ? 0.22 : active ? 1 : 0.85,
-        });
+        const line = L.polyline(m.window.pts, { color, weight: active ? 6 : 4, opacity: active ? 1 : 0.85 });
         hit.on('click', open);
         line.on('click', open);
         addLayer(hit);
         addLayer(line);
         const arrow = L.marker(m.window.mid, {
-          icon: reelMarkIcon(
-            m.travelBearingDeg,
-            color,
-            opts?.label ? opts.label(m, i) : i + 1,
-            active,
-            dimmed !== null,
-          ),
+          icon: reelMarkIcon(m.travelBearingDeg, color, label ? label(m, i) : i + 1, active),
           zIndexOffset: active ? 1000 : 0,
         });
         arrow.on('click', open);
-        if (dimmed) arrow.bindTooltip(dimmed, { direction: 'top' });
         addLayer(arrow);
       });
     },
@@ -981,12 +956,23 @@ export default function App() {
   const drawReelRide = useCallback((ride: ShootRide) => {
     for (const leg of ride.legs) {
       if (leg.kind === 'shot') continue;
+      // A `gap` is amber and dashed because it is NOT A ROUTE — it is the straight line between two
+      // shots the scanned corpus could not join, and it must not read as a road the way the slate
+      // connectors do. The rider's maps app fills it in on export.
       addLayer(
         L.polyline(
           leg.coords,
           leg.kind === 'return'
             ? { color: '#38bdf8', ...RETURN_DASH }
-            : { color: '#64748b', weight: 3, opacity: 0.85 },
+            : leg.kind === 'gap'
+              ? { color: '#f59e0b', weight: 2.5, opacity: 0.9, dashArray: '3 7' }
+              : { color: '#64748b', weight: 3, opacity: 0.85 },
+        ).bindTooltip(
+          leg.kind === 'gap'
+            ? 'No road route in the scan — drawn straight'
+            : leg.kind === 'return'
+              ? 'The way back'
+              : 'Riding between shots',
         ),
       );
     }
@@ -1028,14 +1014,6 @@ export default function App() {
     [reelRide],
   );
 
-  /** Which arrows are dimmed, as a string — the map's read of `reelSteps`, and its redraw key. */
-  const reelBlockedKey = useMemo(() => {
-    if (reelView !== 'ride') return '';
-    const out: string[] = [];
-    for (const [id, s] of reelSteps) if (isBlocked(s)) out.push(id);
-    return out.join('|');
-  }, [reelView, reelSteps]);
-
   // All Reel drawing lives here rather than being scattered through the handlers, so the map is a
   // pure function of (marks, selection, chain) and cannot fall out of step with the list.
   useEffect(() => {
@@ -1049,22 +1027,12 @@ export default function App() {
       // shortlist rank can never be read off the same map. See {@link reelMarkIcon}.
       if (reelRide) drawReelRide(reelRide);
       const order = new Map(reelChain.map((l, i) => [l.mark.id, i + 1]));
-      drawReelMarks(reelMarks, reelSelectedId, {
-        label: (m) => order.get(m.id) ?? null,
-        dim: (m) =>
-          !isBlocked(reelSteps.get(m.id))
-            ? null
-            : reelSteps.get(m.id)?.blocked === 'no-geometry'
-              ? 'The scan does not carry this road, so there is nothing to chain'
-              : reelChain.length === 0
-                ? 'No road route to this one from the scanned network'
-                : 'No road route to this one from where the ride ends',
-      });
+      drawReelMarks(reelMarks, reelSelectedId, (m) => order.get(m.id) ?? null);
     } else {
       drawReelMarks(reelMarks, reelSelectedId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps — keyed on what is drawn, not on identity
-  }, [ready, map, tab, reelDrawKey, reelSelectedId, reelView, reelRideDrawKey, reelBlockedKey]);
+  }, [ready, map, tab, reelDrawKey, reelSelectedId, reelView, reelRideDrawKey]);
 
   // A chain outlives nothing. The moment the shortlist beneath it moves — a new scan, a weight
   // nudge, the refinement landing — it is a route through marks that may no longer be on screen, so
@@ -1750,7 +1718,6 @@ export default function App() {
               ride={{
                 chain: reelChain,
                 ride: reelRide,
-                steps: reelSteps,
                 markCount: reelMarks.length,
                 units,
                 loop: reelRideLoop,

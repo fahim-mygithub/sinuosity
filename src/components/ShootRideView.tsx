@@ -1,7 +1,8 @@
 import { clock } from './ShootCard';
 import { distanceLabel, toUnits } from '../lib/units';
 import type { Units } from '../lib/preferences';
-import type { Chain, NextStep, ScheduledShot, ShootRide } from '../lib/reelRoute';
+import { unroutedGaps } from '../lib/reelRoute';
+import type { Chain, ScheduledShot, ShootRide } from '../lib/reelRoute';
 import type { ReelMark } from '../lib/reelTypes';
 
 /**
@@ -79,42 +80,22 @@ export function startNote(km: number, units: Units): string | null {
   return `Your first shot is ${rideLength(km, units)} from the pin — the ride below starts there, and getting to it is your own road.`;
 }
 
-export interface Reach {
-  /** Shortlist marks that could be tapped next. */
-  open: number;
-  /** Marks with no route from the end of the chain, or no geometry at all. */
-  blocked: number;
-}
-
-/** How much of the shortlist is still in play. Shots already chained count as neither. */
-export function countReach(steps: Map<string, NextStep>): Reach {
-  let open = 0;
-  let blocked = 0;
-  for (const s of steps.values()) {
-    if (s.blocked === null) open++;
-    else if (s.blocked !== 'chained') blocked++;
-  }
-  return { open, blocked };
-}
-
 /**
- * What is still reachable, said out loud.
+ * How much of the ride's length is a straight line rather than measured road, said out loud.
  *
- * This is the honest replacement for the old builder's drop list. The scanned corpus carries
- * secondary, tertiary and unclassified ways but not the residential streets between them, so parts
- * of it are genuinely islands — a real limitation that used to surface only as "10 no road route to
- * them" after a ride had already been built. Here it is a live count, and the arrows it refers to
- * are dimmed on the map before the rider tries them.
+ * THE ONE THING THIS VIEW MUST NOT LET SLIDE. The rider can chain any two shots, including two the
+ * scanned corpus has no route between — the corpus carries secondary, tertiary and unclassified ways
+ * but not the residential streets that join them, so that is common rather than exotic. Those hops
+ * are drawn straight and measured straight, which makes the ride's total a LOWER BOUND wherever one
+ * appears. A summary that printed "11 mi" over a ride with two straight-line hops in it would be
+ * claiming a measurement it does not have.
+ *
+ * Returns null for a fully routed ride, where the total is exactly what it says.
  */
-export function reachNote(reach: Reach, chained: boolean): string | null {
-  if (!chained) return null;
-  if (reach.open === 0) {
-    return reach.blocked === 0
-      ? 'Every shot on the shortlist is in this ride.'
-      : 'Nothing else on the shortlist connects to the end of this chain by a road the scan covered. Tap a shot in the ride to cut back, or finish here.';
-  }
-  if (reach.blocked === 0) return `Any of the other ${reach.open} shots can follow this one.`;
-  return `${reach.open} of the remaining ${reach.open + reach.blocked} shots can follow this one — the dimmed arrows sit on roads the scan never connected to here.`;
+export function gapNote(gaps: { count: number; km: number }, units: Units): string | null {
+  if (gaps.count === 0) return null;
+  const hops = gaps.count === 1 ? 'One hop' : `${gaps.count} hops`;
+  return `${hops} in this ride had no road route in the scan, so ${gaps.count === 1 ? 'it is' : 'they are'} drawn straight and counted as ${rideLength(gaps.km, units)}. The real road is longer — your maps app will find it when you open the ride.`;
 }
 
 export interface ShootRideViewProps {
@@ -122,8 +103,6 @@ export interface ShootRideViewProps {
   chain: Chain;
   /** The chain assembled into a drivable ride. Null while the chain is empty. */
   ride: ShootRide | null;
-  /** Every shortlist mark's standing against the end of the chain, keyed by mark id. */
-  steps: Map<string, NextStep>;
   /** How many marks the shortlist holds — the denominator for "3 of 40". */
   markCount: number;
   units: Units;
@@ -140,8 +119,8 @@ export interface ShootRideViewProps {
 export function ShootRideView(props: ShootRideViewProps) {
   const { chain, ride, units } = props;
   const dark = ride ? outsideLight(ride.shots) : [];
-  const reach = countReach(props.steps);
-  const note = reachNote(reach, chain.length > 0);
+  const gaps = ride ? unroutedGaps(ride) : { count: 0, km: 0 };
+  const note = gapNote(gaps, units);
 
   if (chain.length === 0) {
     return (
@@ -154,8 +133,9 @@ export function ShootRideView(props: ShootRideViewProps) {
           </p>
         </div>
         <p className="text-[10px] text-slate-400 leading-snug">
-          Arrows go dim once they cannot be reached from where the chain currently ends. Tapping a
-          shot that is already in the ride cuts back to it.
+          Any arrow can follow any other. Where the scan has no road between two of them the ride
+          shows a dashed straight line and says so. Tapping a shot already in the ride cuts back to
+          it.
         </p>
       </div>
     );
@@ -166,7 +146,9 @@ export function ShootRideView(props: ShootRideViewProps) {
       {ride && (
         <div className="bg-slate-950/50 px-3 py-2.5 rounded-xl border border-slate-800">
           <p className="text-[12px] font-bold text-slate-100">
-            {ride.shots.length} of {props.markCount} shots · {rideLength(ride.km, units)}
+            {ride.shots.length} of {props.markCount} shots ·{' '}
+            {gaps.count > 0 && <span className="text-amber-400">at least </span>}
+            {rideLength(ride.km, units)}
           </p>
           <p className="text-[11px] text-slate-300 mt-0.5">
             Leave at {clock(ride.depart)} · about {rideDuration(ride.minutes)} of riding, before you
@@ -199,7 +181,15 @@ export function ShootRideView(props: ShootRideViewProps) {
                     {link.mark.roadName || 'Unnamed road'}
                   </span>
                   <span className="block text-[10px] text-slate-400 truncate">
-                    {i === 0 ? 'the ride starts here' : `${hopLength(link.transitKm, units)} on from the last`}
+                    {i === 0 ? (
+                      'the ride starts here'
+                    ) : link.routed ? (
+                      `${hopLength(link.transitKm, units)} on from the last`
+                    ) : (
+                      <span className="text-amber-400">
+                        {hopLength(link.transitKm, units)} straight from the last — no road in the scan
+                      </span>
+                    )}
                     {shot && ` · from ${clock(shot.at)}`}
                     {shot && shot.light !== 'in' && (
                       <span className="text-amber-400 font-bold">
@@ -225,7 +215,7 @@ export function ShootRideView(props: ShootRideViewProps) {
         })}
       </ol>
 
-      {note && <p className="text-[10px] text-slate-400 leading-snug">{note}</p>}
+      {note && <p className="text-[10px] text-amber-400/90 leading-snug">{note}</p>}
 
       <label className="flex items-center gap-2 min-h-[44px] cursor-pointer px-3 rounded-xl bg-slate-950/50 border border-slate-800">
         <input

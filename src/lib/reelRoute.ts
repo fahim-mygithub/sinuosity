@@ -19,9 +19,18 @@
 // tertiary and unclassified ways but not the residential streets that knit them together, so the
 // junction graph is genuinely a set of islands — measured at Ellicottville, 129 components over 996
 // nodes. The old builder met that by silently dropping shots (10 of 40 on one real run) into a
-// footnote. Chaining by hand turns the same fact into something the rider can see: an arrow that
-// cannot be reached from where they are standing is drawn as unreachable BEFORE they tap it, and the
-// count of what is still reachable is on screen. Same limitation, visible instead of accounted for.
+// footnote.
+//
+// THE CORPUS DOES NOT GET A VETO, which is the second thing this module learned the hard way. A
+// first pass at hand-chaining kept the connectivity as a hard constraint: unreachable arrows were
+// drawn dim and refused the tap. Measured on a real 30 km Buffalo scan, one tap left 6 of 39 arrows
+// live and another left NONE — so the rider was being told they could not ride between two roads
+// they can plainly see, on the authority of a road list that never loaded the streets between them.
+// That is the tool overstating what it knows. Now every tap is accepted: where the network has a
+// route it is measured road, and where it does not the hop is drawn as the straight line it is,
+// labelled as a guess wherever the distance is reported, and left for the rider's maps app to fill
+// in on export — it has the residential streets this scan does not. Same limitation, no longer
+// enforced as if it were the world.
 //
 // WHAT SURVIVED, because none of it was the problem: the noded junction graph and its Dijkstra, the
 // direction handling in {@link shotGeometry}, leg assembly, the circuit-versus-retrace distinction,
@@ -52,9 +61,16 @@ import type { AreaScan } from './overpass';
 // The ride
 // ------------------------------------------------------------------------------------------------
 
-/** One stretch of the drawn ride. `shot` legs are the 400 m the cards are about; the rest is transit. */
+/**
+ * One stretch of the drawn ride. `shot` legs are the 400 m the cards are about; the rest is transit.
+ *
+ * `gap` is transit the scan CANNOT DESCRIBE: two shots the rider chained with no route between them
+ * through the scanned corpus. It is drawn as the straight line between them and measured as one,
+ * which makes it the only leg on the ride whose distance is not a road. Every consumer that totals
+ * or reports distance has to say so — see {@link unroutedGaps}.
+ */
 export interface RideLeg {
-  kind: 'shot' | 'connector' | 'return';
+  kind: 'shot' | 'connector' | 'gap' | 'return';
   coords: LatLng[];
   km: number;
   /** Set on `shot` legs — the mark this leg is. */
@@ -199,6 +215,34 @@ export interface ChainContext {
   geom: Map<string, ShotGeometry>;
 }
 
+/**
+ * A mark's stretch with no parent road behind it: the 400 m alone, and nothing either side.
+ *
+ * The fallback when the corpus does not carry the road a mark sits on — which used to make the mark
+ * unchainable outright. It cannot, because `RoadWindow.pts` IS the stretch, resampled at 25 m and
+ * already on the map as the line the rider is tapping. What is genuinely missing is the road either
+ * side, so there is no approach, no departure, and the two ends are not junctions: nothing here
+ * hashes into the graph, so a hop to or from this shot never routes and is drawn straight. That is
+ * the correct answer rather than a refusal — the road exists, this scan just did not read it.
+ */
+function markGeometry(mark: ReelMark): ShotGeometry | null {
+  const pts = mark.window.pts;
+  if (!pts || pts.length < 2) return null;
+  const shot = mark.direction === 'reverse' ? [...pts].reverse() : pts;
+  const end = shot[shot.length - 1];
+  return {
+    mark,
+    shot,
+    shotKm: pathLength(shot),
+    lead: [shot[0]],
+    leadKm: 0,
+    tail: [end],
+    tailKm: 0,
+    fromNode: shot[0],
+    toNode: end,
+  };
+}
+
 export function chainContext(marks: ReelMark[], scan: AreaScan | null): ChainContext | null {
   if (!scan?.corpus?.length || !marks.length) return null;
   const graph = getReturnGraph(scan.corpus);
@@ -212,105 +256,109 @@ export function chainContext(marks: ReelMark[], scan: AreaScan | null): ChainCon
   const geom = new Map<string, ShotGeometry>();
   for (const m of marks) {
     const coords = byId.get(m.roadId);
-    const g = coords ? shotGeometry(m, coords) : null;
+    const g = (coords ? shotGeometry(m, coords) : null) ?? markGeometry(m);
     if (g) geom.set(m.id, g);
   }
   return geom.size ? { graph, geom } : null;
 }
 
-/** One tap: the shot, and the road ridden from the previous shot to reach it. */
+/** One tap: the shot, and how the rider gets to it from the previous one. */
 export interface ChainLink {
   mark: ReelMark;
-  /** The junction-to-junction hop only. Empty for the first link, and for two stretches whose roads
-   *  already meet — in both of those there is no connector to route. */
+  /** The junction-to-junction hop only. Empty for the first link, for two stretches whose roads
+   *  already meet, and for an unrouted hop — in none of those is there a connector to draw. */
   connector: LatLng[];
-  /** Everything ridden between the previous stretch and this one (km): off the last road to its
-   *  junction, across the graph, and on to this one. Zero for the first link. */
+  /** Everything between the previous stretch and this one (km): off the last road to its junction,
+   *  across the graph, and on to this one. Zero for the first link. When `routed` is false this is
+   *  the straight line instead, and is an UNDER-estimate of the road that will be ridden. */
   transitKm: number;
+  /** False when the scanned network had no route here and the hop is drawn straight. */
+  routed: boolean;
 }
 
 export type Chain = ChainLink[];
 
-/** Why a mark cannot follow the chain as it stands. */
-export type NextBlocked =
-  /** Its parent road is not in the scanned corpus, so there is no geometry to ride. */
-  | 'no-geometry'
-  /** No route through the scanned network from the end of the chain to its entry. */
-  | 'unreachable'
-  /** It is already in the chain. */
-  | 'chained';
-
 export interface NextStep {
-  /** Null when the mark can be tapped next; otherwise why it cannot. */
-  blocked: NextBlocked | null;
+  /** Already in the chain — a tap cuts back to it rather than appending it again. */
+  chained: boolean;
   /** What riding to it would add (km) — the same quantity as {@link ChainLink.transitKm}. */
   km: number;
-  /** The junction-to-junction hop, ready to become a {@link ChainLink}. */
+  /** The junction-to-junction hop, ready to become a {@link ChainLink}. Empty when unrouted. */
   path: LatLng[];
+  /** Whether the scanned network could route the hop at all. */
+  routed: boolean;
 }
 
 /**
- * Every mark's standing against the end of the chain, in ONE graph search.
+ * What it costs to add each mark to the chain, in ONE graph search.
  *
- * This is the affordance the whole hand-chained model rests on: the rider finds out an arrow is out
- * of reach by looking at it, not by tapping it and getting an error. One multi-target Dijkstra from
- * the chain's exit settles the whole shortlist at once — see {@link findPathsFrom} for why that is a
- * row rather than N searches.
+ * NOTHING HERE REFUSES, and that is the point. An earlier version of this returned a `blocked`
+ * reason and the map drew those arrows dim: the scanned corpus carries secondary, tertiary and
+ * unclassified ways but no residential streets, so it is genuinely a set of islands, and measured on
+ * a real 30 km Buffalo scan a single tap could leave anywhere from 6 of 39 arrows live down to NONE
+ * of them. That is a fact about what was scanned, not about what the rider can ride, and letting it
+ * veto their taps put the corpus in charge of the route.
+ *
+ * So the search now answers a question rather than granting permission: is there a road route from
+ * the end of the chain to this shot, and how long is it? When there is, the hop is real road and is
+ * measured as such. When there is not, the hop is the straight line between the two stretches, the
+ * ride says so at every level that reports it, and the rider's maps app finds the actual road on
+ * export — it has the residential streets this scan never loaded.
  *
  * DELIBERATELY UNBOUNDED in distance. The old builder capped a connector at a fraction of the
  * rider's target and called anything longer unreachable, which conflated "there is no road" with
  * "that is further than I would ride" — two different answers, and only the first is the network's
- * to give. A 40 km hop is shown as 40 km and left to the rider.
+ * to give. A 40 km hop is quoted as 40 km and left to the rider.
  */
 export function nextSteps(ctx: ChainContext, chain: Chain, marks: ReelMark[]): Map<string, NextStep> {
   const out = new Map<string, NextStep>();
-  const blocked = (id: string, why: NextBlocked) => out.set(id, { blocked: why, km: 0, path: [] });
-
   const inChain = new Set(chain.map((l) => l.mark.id));
   const open: ReelMark[] = [];
   for (const m of marks) {
-    if (inChain.has(m.id)) blocked(m.id, 'chained');
-    else if (!ctx.geom.has(m.id)) blocked(m.id, 'no-geometry');
-    else open.push(m);
+    if (inChain.has(m.id)) out.set(m.id, { chained: true, km: 0, path: [], routed: true });
+    else if (ctx.geom.has(m.id)) open.push(m);
   }
 
-  // An empty chain has no end to route from, so anything with geometry can start one.
+  // An empty chain has no end to route from, so anything can start one at no cost.
   const end = chain.length ? ctx.geom.get(chain[chain.length - 1].mark.id) : null;
   if (!end) {
-    for (const m of open) out.set(m.id, { blocked: null, km: 0, path: [] });
+    for (const m of open) out.set(m.id, { chained: false, km: 0, path: [], routed: true });
     return out;
   }
 
   const entries = open.map((m) => ctx.geom.get(m.id)!.fromNode);
   const paths = findPathsFrom(ctx.graph, end.toNode, entries);
+  const exit = end.shot[end.shot.length - 1];
   open.forEach((m, i) => {
+    const g = ctx.geom.get(m.id)!;
     // `findPathsFrom` answers null for "you are already there" as well as "there is no way through",
     // and only the second is a missing connection. Two shots on adjoining ways share a junction and
-    // need no connector at all; treating that as unreachable would drop the easiest pair on the map.
+    // need no connector at all; treating that as unrouted would draw a straight line of length zero
+    // over the easiest pair on the map.
     const path = paths[i] ?? (sameNode(end.toNode, entries[i]) ? [] : null);
-    if (path === null) {
-      blocked(m.id, 'unreachable');
-      return;
-    }
-    const g = ctx.geom.get(m.id)!;
-    out.set(m.id, { blocked: null, km: end.tailKm + pathLength(path) + g.leadKm, path });
+    out.set(
+      m.id,
+      path === null
+        ? { chained: false, km: haversine(exit, g.shot[0]), path: [], routed: false }
+        : { chained: false, km: end.tailKm + pathLength(path) + g.leadKm, path, routed: true },
+    );
   });
   return out;
 }
 
 /**
- * Add a tapped mark to the chain, or refuse.
+ * Add a tapped mark to the chain.
  *
  * Takes the mark's already-computed {@link NextStep} rather than routing again: `nextSteps` has just
- * settled every reachable entry from this same node, so re-running one of those searches per tap
- * would be the same answer at the same cost. It also means the guard the rider sees on the map (a
- * dimmed arrow) and the guard that runs on the tap are literally the same value, and cannot drift.
+ * settled every entry from this same node, so re-running one of those searches per tap would be the
+ * same answer at the same cost.
  *
- * Returns null when the mark cannot follow, so the caller has one thing to check.
+ * The only tap it declines is one the caller should not have sent — a mark already in the chain,
+ * which is the cut-back gesture and belongs to {@link truncateAt}. Everything else appends.
  */
 export function appendShot(chain: Chain, mark: ReelMark, step: NextStep | undefined): Chain | null {
-  if (!step || step.blocked !== null) return null;
-  return [...chain, { mark, connector: step.path, transitKm: step.km }];
+  if (!step || step.chained) return null;
+  return [...chain, { mark, connector: step.path, transitKm: step.km, routed: step.routed }];
 }
 
 /**
@@ -373,8 +421,14 @@ export function chainRide(ctx: ChainContext, chain: Chain, opts: ChainRideOption
     new Date(opts.departAt.getTime() + (cumKm / PLANNING_SPEED_KMH) * 3600_000);
 
   geoms.forEach((g, i) => {
-    // Transit: off the previous stretch to its junction, across the graph, then on to this one.
-    if (i > 0) push('connector', joinPath([geoms[i - 1].tail, chain[i].connector, g.lead]));
+    // Transit. Routed: off the previous stretch to its junction, across the graph, then on to this
+    // one. Unrouted: the straight line from the end of the last stretch to the start of this one,
+    // and NOT via either road's junctions — those are approaches to a crossing this hop is not
+    // using, so including them would dress a guess up as measured road.
+    if (i > 0) {
+      if (chain[i].routed) push('connector', joinPath([geoms[i - 1].tail, chain[i].connector, g.lead]));
+      else push('gap', [geoms[i - 1].shot[geoms[i - 1].shot.length - 1], g.shot[0]]);
+    }
     shots.push({
       mark: g.mark,
       order: i + 1,
@@ -421,6 +475,24 @@ export function chainRide(ctx: ChainContext, chain: Chain, opts: ChainRideOption
     start,
     startOffsetKm: haversine(start, opts.from),
   };
+}
+
+/**
+ * The part of a ride that is straight-line guesswork rather than measured road.
+ *
+ * Exported because every surface that reports a ride's length has to be able to qualify it. A ride
+ * with gaps in it is partly a measurement and partly a lower bound, and `km` alone cannot say which
+ * — the real road across a gap is always longer than the straight line drawn over it.
+ */
+export function unroutedGaps(ride: ShootRide): { count: number; km: number } {
+  let count = 0;
+  let km = 0;
+  for (const l of ride.legs) {
+    if (l.kind !== 'gap') continue;
+    count++;
+    km += l.km;
+  }
+  return { count, km };
 }
 
 /** Concatenate polylines that meet end-to-end, dropping the duplicated shared vertex. */

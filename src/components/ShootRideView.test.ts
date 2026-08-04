@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
-  countReach,
+  gapNote,
   hopLength,
   outsideLight,
-  reachNote,
   rideDuration,
   rideLength,
   shapeNote,
   startNote,
 } from './ShootRideView';
-import type { NextStep, ScheduledShot, ShootRide } from '../lib/reelRoute';
+import type { ScheduledShot, ShootRide } from '../lib/reelRoute';
 
 // This view's whole job is to not overstate a ride. The tests below are about the ways it could:
 // calling a retrace a loop, printing a planning estimate to a precision it does not have, and
@@ -31,9 +30,6 @@ const ride = (over: Partial<ShootRide> = {}): ShootRide =>
   }) as ShootRide;
 
 const shot = (light: ScheduledShot['light']): ScheduledShot => ({ light }) as ScheduledShot;
-
-const steps = (...blocked: (NextStep['blocked'])[]): Map<string, NextStep> =>
-  new Map(blocked.map((b, i) => [`m${i}`, { blocked: b, km: 0, path: [] }]));
 
 describe('rideLength', () => {
   it('rounds to the whole unit, which is all a planning estimate carries', () => {
@@ -101,35 +97,24 @@ describe('startNote', () => {
   });
 });
 
-describe('countReach', () => {
-  it('counts what can still be tapped against what cannot, ignoring what is already chained', () => {
-    const r = countReach(steps(null, null, 'unreachable', 'chained', 'no-geometry'));
-    expect(r).toEqual({ open: 2, blocked: 2 });
-  });
-});
-
-describe('reachNote', () => {
-  it('says nothing before the rider has tapped anything', () => {
-    expect(reachNote({ open: 40, blocked: 0 }, false)).toBeNull();
+describe('gapNote', () => {
+  it('says nothing about a ride that is measured road all the way', () => {
+    expect(gapNote({ count: 0, km: 0 }, 'mi')).toBeNull();
   });
 
-  it('names the split when part of the shortlist is out of reach', () => {
-    // The corpus carries no residential roads, so it is genuinely a set of islands. This is the live
-    // version of what the old builder could only report as a footnote after the fact.
-    const note = reachNote({ open: 12, blocked: 8 }, true)!;
-    expect(note).toContain('12 of the remaining 20');
-    expect(note).toContain('dimmed');
+  it('names how much of the total is a straight line rather than a road', () => {
+    // The rider can chain any two shots, including two the scan cannot route between. Printing the
+    // total without this would claim a measurement the ride does not have.
+    const note = gapNote({ count: 2, km: 11.3 }, 'mi')!;
+    expect(note).toContain('2 hops');
+    expect(note).toContain('7 mi');
+    expect(note).toContain('longer');
   });
 
-  it('tells the rider the chain is stuck rather than leaving them tapping', () => {
-    expect(reachNote({ open: 0, blocked: 5 }, true)).toContain('cut back');
-  });
-
-  it('does not call a finished shortlist stuck', () => {
-    expect(reachNote({ open: 0, blocked: 0 }, true)).toContain('Every shot');
-  });
-
-  it('says nothing is out of reach when nothing is', () => {
-    expect(reachNote({ open: 9, blocked: 0 }, true)).toContain('Any of the other 9');
+  it('reads as English for a single hop', () => {
+    const note = gapNote({ count: 1, km: 3.2 }, 'km')!;
+    expect(note).toContain('One hop');
+    expect(note).toContain('it is');
+    expect(note).not.toContain('they are');
   });
 });

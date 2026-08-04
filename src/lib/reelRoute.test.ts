@@ -8,6 +8,7 @@ import {
   shotGeometry,
   standing,
   truncateAt,
+  unroutedGaps,
   type Chain,
   type ChainContext,
   type ShootRide,
@@ -98,10 +99,22 @@ const opts = (over: Partial<Parameters<typeof chainRide>[2]> = {}) => ({
   ...over,
 });
 
-/** The same mark, on a road the corpus does not carry. A distinct id — a mark is identified by its
- *  window and its direction, so two marks that differ only in parent road would otherwise collide. */
+/**
+ * The same mark, on a road the corpus does not carry.
+ *
+ * A distinct id, because a mark is identified by its window and direction, so two marks differing
+ * only in parent road would otherwise collide. And a window OFF THE JUNCTION LATTICE, because that
+ * is the real shape of this case: a 400 m stretch sits mid-road, and its ends are ordinary vertices
+ * rather than junctions. Reusing a way's own endpoints here would hand the fallback geometry two
+ * real graph nodes and quietly make the unroutable case routable.
+ */
 const orphaned = (m: ReelMark): ReelMark =>
-  ({ ...m, id: `${m.id}:orphan`, roadId: 'NOPE' }) as ReelMark;
+  ({
+    ...m,
+    id: `${m.id}:orphan`,
+    roadId: 'NOPE',
+    window: { ...m.window, pts: [[42.9037, -78.9037], [42.9037, -78.9021]] as LatLng[] },
+  }) as ReelMark;
 
 /** Tap marks in order, exactly as the map does: ask what can follow, then follow it. */
 function chainOf(ctx: ChainContext, marks: ReelMark[], taps: ReelMark[]): Chain {
@@ -249,11 +262,24 @@ describe('chainContext', () => {
     expect(ctx.geom.size).toBe(2);
   });
 
-  it('omits a mark on a road the corpus does not carry, rather than inventing one', () => {
+  it('falls back to the stretch the mark carries when the corpus lacks its road', () => {
+    // The window's own points ARE the 400 m, resampled and already drawn on the map. What is missing
+    // is the road either side, so the stretch has no approach, no departure and no junctions — which
+    // is what makes every hop to or from it unrouted rather than impossible.
     const orphan = orphaned(mark(A, 400, 'forward'));
     const ctx = chainContext([mark(C, 400, 'forward'), orphan], scanOf(SQUARE))!;
-    expect(ctx.geom.has(orphan.id)).toBe(false);
-    expect(ctx.geom.size).toBe(1);
+    const g = ctx.geom.get(orphan.id)!;
+    expect(g.shot).toEqual(orphan.window.pts);
+    expect(g.leadKm).toBe(0);
+    expect(g.tailKm).toBe(0);
+    expect(g.fromNode).toEqual(orphan.window.pts[0]);
+    expect(ctx.geom.size).toBe(2);
+  });
+
+  it('rides a fallback stretch the way the mark points, same as any other', () => {
+    const rev = orphaned(mark(A, 400, 'reverse'));
+    const ctx = chainContext([rev], scanOf(SQUARE))!;
+    expect(ctx.geom.get(rev.id)!.shot).toEqual([...rev.window.pts].reverse());
   });
 
   it('is null when there is nothing to chain over', () => {
@@ -267,32 +293,14 @@ describe('nextSteps', () => {
   const marks = [mark(A, 400, 'forward'), mark(C, 400, 'forward'), mark(D, 200, 'forward')];
   const ctx = chainContext(marks, scanOf(SQUARE))!;
 
-  it('opens every shot when the chain is empty — any of them can start one', () => {
+  it('costs nothing to start a chain — any shot can be the first', () => {
     const steps = nextSteps(ctx, [], marks);
-    expect([...steps.values()].every((s) => s.blocked === null)).toBe(true);
+    expect([...steps.values()].every((s) => !s.chained && s.routed && s.km === 0)).toBe(true);
   });
 
-  it('blocks what is already in the chain, so a shot cannot be filmed twice', () => {
+  it('marks what is already in the chain, so a tap there cuts back instead of repeating a shot', () => {
     const chain = chainOf(ctx, marks, [marks[0]]);
-    expect(nextSteps(ctx, chain, marks).get(marks[0].id)!.blocked).toBe('chained');
-  });
-
-  it('blocks a mark whose road the corpus does not carry', () => {
-    const orphan = orphaned(mark(A, 400, 'forward'));
-    const all = [...marks, orphan];
-    const withOrphan = chainContext(all, scanOf(SQUARE))!;
-    expect(nextSteps(withOrphan, [], all).get(orphan.id)!.blocked).toBe('no-geometry');
-  });
-
-  it('blocks a shot on another island — the corpus fragmentation, made visible', () => {
-    // This is the case the old builder reported as a footnote after the fact. Here the rider sees it
-    // on the arrow before tapping: measured on a real scan, 10 of 40 shots were in this state.
-    const all = [...marks, mark(ISLE, 400, 'forward')];
-    const isled = chainContext(all, scanOf([...SQUARE, ISLE]))!;
-    const chain = chainOf(isled, all, [all[0]]);
-    const steps = nextSteps(isled, chain, all);
-    expect(steps.get(all[3].id)!.blocked).toBe('unreachable');
-    expect(steps.get(all[1].id)!.blocked).toBeNull();
+    expect(nextSteps(ctx, chain, marks).get(marks[0].id)!.chained).toBe(true);
   });
 
   it('quotes the WHOLE ride to the next shot, not just the hop between junctions', () => {
@@ -302,6 +310,7 @@ describe('nextSteps', () => {
     const step = nextSteps(ctx, chain, marks).get(marks[1].id)!;
     const from = ctx.geom.get(marks[0].id)!;
     const to = ctx.geom.get(marks[1].id)!;
+    expect(step.routed).toBe(true);
     expect(step.km).toBeGreaterThan(from.tailKm + to.leadKm);
     expect(step.km).toBeCloseTo(from.tailKm + haversine(P(0, 2), P(1, 2)) + to.leadKm, 6);
   });
@@ -313,12 +322,40 @@ describe('nextSteps', () => {
     const adj = chainContext(pair, scanOf(SQUARE))!;
     const chain = chainOf(adj, pair, [pair[0]]);
     const step = nextSteps(adj, chain, pair).get(pair[1].id)!;
-    expect(step.blocked).toBeNull();
+    expect(step.routed).toBe(true);
     expect(step.path).toEqual([]);
     expect(step.km).toBeCloseTo(
       adj.geom.get(pair[0].id)!.tailKm + adj.geom.get(pair[1].id)!.leadKm,
       6,
     );
+  });
+
+  it('offers a shot on another island as a STRAIGHT hop rather than refusing it', () => {
+    // The corpus carries no residential streets, so it is genuinely islanded — measured on a real
+    // Buffalo scan one tap left 6 of 39 arrows routable and another left none. Refusing the tap put
+    // that gap in charge of the rider's route; quoting it as a straight line does not.
+    const all = [...marks, mark(ISLE, 400, 'forward')];
+    const isled = chainContext(all, scanOf([...SQUARE, ISLE]))!;
+    const chain = chainOf(isled, all, [all[0]]);
+    const step = nextSteps(isled, chain, all).get(all[3].id)!;
+    expect(step.routed).toBe(false);
+    expect(step.path).toEqual([]);
+    // The straight line from the end of the last stretch to the start of the island one.
+    const from = isled.geom.get(all[0].id)!;
+    const to = isled.geom.get(all[3].id)!;
+    expect(step.km).toBeCloseTo(haversine(from.shot[from.shot.length - 1], to.shot[0]), 9);
+    // …and the routable neighbour is still routed, so this is not a blanket give-up.
+    expect(nextSteps(isled, chain, all).get(all[1].id)!.routed).toBe(true);
+  });
+
+  it('offers a mark whose road the corpus never loaded, using the stretch the mark carries', () => {
+    const orphan = orphaned(mark(A, 400, 'forward'));
+    const all = [...marks, orphan];
+    const withOrphan = chainContext(all, scanOf(SQUARE))!;
+    expect(withOrphan.geom.has(orphan.id)).toBe(true);
+    const step = nextSteps(withOrphan, chainOf(withOrphan, all, [all[0]]), all).get(orphan.id)!;
+    expect(step.chained).toBe(false);
+    expect(step.routed).toBe(false);
   });
 });
 
@@ -326,14 +363,21 @@ describe('appendShot', () => {
   const marks = [mark(A, 400, 'forward'), mark(C, 400, 'forward')];
   const ctx = chainContext(marks, scanOf(SQUARE))!;
 
-  it('refuses a shot that cannot follow, rather than chaining a jump', () => {
+  it('accepts a shot with no road route to it — the corpus does not get a veto', () => {
     const all = [...marks, mark(ISLE, 400, 'forward')];
     const isled = chainContext(all, scanOf([...SQUARE, ISLE]))!;
     const chain = chainOf(isled, all, [all[0]]);
     const steps = nextSteps(isled, chain, all);
-    expect(appendShot(chain, all[2], steps.get(all[2].id))).toBeNull();
-    expect(appendShot(chain, all[0], steps.get(all[0].id))).toBeNull();
-    expect(appendShot(chain, all[1], undefined)).toBeNull();
+    const grown = appendShot(chain, all[2], steps.get(all[2].id))!;
+    expect(grown).toHaveLength(2);
+    expect(grown[1].routed).toBe(false);
+  });
+
+  it('declines only a repeat, which is the cut-back gesture', () => {
+    const chain = chainOf(ctx, marks, [marks[0]]);
+    const steps = nextSteps(ctx, chain, marks);
+    expect(appendShot(chain, marks[0], steps.get(marks[0].id))).toBeNull();
+    expect(appendShot(chain, marks[1], undefined)).toBeNull();
   });
 
   it('keeps the routed hop on the link, so the ride never re-routes what the rider chose', () => {
@@ -341,6 +385,7 @@ describe('appendShot', () => {
     const step = nextSteps(ctx, [chain[0]], marks).get(marks[1].id)!;
     expect(chain[1].connector).toEqual(step.path);
     expect(chain[1].transitKm).toBe(step.km);
+    expect(chain[1].routed).toBe(true);
     expect(chain[0].transitKm).toBe(0);
   });
 });
@@ -443,5 +488,38 @@ describe('chainRide', () => {
 
   it('has nothing to draw for an empty chain', () => {
     expect(chainRide(ctx, [], opts())).toBeNull();
+  });
+
+  describe('an unrouted hop', () => {
+    const all = [mark(A, 400, 'forward'), mark(ISLE, 400, 'forward')];
+    const isled = chainContext(all, scanOf([...SQUARE, ISLE]))!;
+    const ride = chainRide(isled, chainOf(isled, all, all), opts())!;
+
+    it('is drawn as the straight line between the two stretches, and nothing else', () => {
+      // NOT via either road's junctions. Those are approaches to a crossing this hop is not using,
+      // and including them would dress a guess up as measured road.
+      const gap = ride.legs.find((l) => l.kind === 'gap')!;
+      expect(gap.coords).toHaveLength(2);
+      const from = isled.geom.get(all[0].id)!;
+      const to = isled.geom.get(all[1].id)!;
+      expect(gap.coords[0]).toEqual(from.shot[from.shot.length - 1]);
+      expect(gap.coords[1]).toEqual(to.shot[0]);
+      assertContinuous(ride);
+    });
+
+    it('is reported separately, so the ride is never read as fully measured', () => {
+      const gaps = unroutedGaps(ride);
+      expect(gaps.count).toBe(1);
+      expect(gaps.km).toBeGreaterThan(0);
+      expect(gaps.km).toBeLessThan(ride.km);
+      // The straight line is a floor: the real road across it can only be longer.
+      expect(gaps.km).toBeCloseTo(haversine(...(ride.legs.find((l) => l.kind === 'gap')!.coords as [LatLng, LatLng])), 9);
+    });
+
+    it('leaves a fully routed ride reporting nothing', () => {
+      const clean = chainRide(ctx, chainOf(ctx, marks, [marks[0], marks[1]]), opts())!;
+      expect(unroutedGaps(clean)).toEqual({ count: 0, km: 0 });
+      expect(clean.legs.some((l) => l.kind === 'gap')).toBe(false);
+    });
   });
 });
